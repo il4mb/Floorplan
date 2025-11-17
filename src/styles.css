@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+/* Base styles for the floorplan editor */
+.floorplan-editor {
+  box-sizing: border-box;
+}
+
+.floorplan-editor *,
+.floorplan-editor *::before,
+.floorplan-editor *::after {
+  box-sizing: inherit;
+}
+
+.floorplan-canvas {
+  background: #08121d;
+  touch-action: none;
+  user-select: none;
+}
+
+.floorplan-canvas svg {
+  display: block;
+}
+
+
+.toolbox button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inspector {
+  min-width: 280px;
+}
+
+/* Selection styles */
+.selection-box {
+  fill: rgba(59, 130, 246, 0.1);
+  stroke: #3b82f6;
+  stroke-width: 1;
+  stroke-dasharray: 4, 2;
+}
+
+/* Transform handles */
+.transform-handle {
+  transition: all 0.1s ease;
+}
+
+.transform-handle:hover {
+  transform: scale(1.2);
+}
+
+/* Grid animation */
+@keyframes grid-fade {
+  0% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+
+  100% {
+    opacity: 0.3;
+  }
+}
+
+.grid-line {
+  animation: grid-fade 2s ease-in-out infinite;
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+
+  .transform-handle,
+  .grid-line {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Focus styles */
+.toolbox button:focus-visible,
+.inspector input:focus-visible,
+.inspector select:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}

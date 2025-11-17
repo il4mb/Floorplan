@@ -1,0 +1,357 @@
+import React, { useRef, useEffect, useState, useCallback, useMemo, MouseEvent } from 'react';
+import { Point, Rect } from '../types';
+import { SnapEngine } from '../utils/snap';
+import { useFloorplanContext } from './FloorplanProvider';
+import GridCanvas from './GridCanvas';
+import NodeRender from './nodes/NodeRender';
+import NodeDrawer from './nodes/NodeDrawer';
+import { rotatePoint } from '../utils/geometry';
+import { useLayers } from './LayersProvider';
+import SpotsProvider from './SpotsProvider';
+import { PointerContext } from '@/hooks/usePointer';
+
+interface FloorplanCanvasProps {
+    gridSize?: number;
+    snap?: boolean;
+    className?: string;
+    background?: string;
+}
+
+const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap = true, className = '', background = 'rgb(10, 17, 19)' }) => {
+
+    const { layers, selected: layersIds } = useLayers();
+    const [points, setPoints] = useState<Point[]>([]);
+    const [rect, setRect] = useState<Rect>({ width: 0, height: 0, x: 0, y: 0 });
+    const containerRef = useRef<HTMLDivElement>(null);
+    const { state, actions } = useFloorplanContext();
+    const svgRef = useRef<SVGSVGElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragStart, setDragStart] = useState<Point | null>(null);
+    const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
+    const [selectionStart, setSelectionStart] = useState<Point | null>(null);
+    const [isInitialized, setIsInitialized] = useState(false);
+    const snapEngine = useRef(new SnapEngine(gridSize));
+    const viewBox = useMemo(() => `0 0 ${rect.width} ${rect.height}`, [rect]);
+
+    // Center the view on (0,0) when component mounts or size changes
+    useEffect(() => {
+        if (rect.width > 0 && rect.height > 0 && !isInitialized) {
+            // Calculate the center position so that (0,0) is in the center of the canvas
+            const centerX = -rect.width / (2 * state.view.zoom);
+            const centerY = -rect.height / (2 * state.view.zoom);
+
+            actions.updateView({
+                x: centerX,
+                y: centerY
+            });
+
+            setIsInitialized(true);
+            console.log('Centered view at:', { centerX, centerY, width: rect.width, height: rect.height, zoom: state.view.zoom });
+        }
+        snapEngine.current.enableAdaptiveGrid(true);
+    }, [rect, state.view.zoom, actions, isInitialized]);
+
+    // Convert screen coordinates to world coordinates
+    const clientToWorldPoint = useCallback(({ x, y }: Point): Point => {
+        const svg = svgRef.current;
+        if (!svg) return { x: 0, y: 0 };
+
+        const rect = svg.getBoundingClientRect();
+        const screenX = x - rect.left;
+        const screenY = y - rect.top;
+
+        // Convert screen coordinates to world coordinates
+        const worldX = (screenX / state.view.zoom) + state.view.x;
+        const worldY = (screenY / state.view.zoom) + state.view.y;
+
+        return { x: worldX, y: worldY };
+    }, [state.view.zoom, state.view.x, state.view.y]);
+
+    // Convert world coordinates to screen coordinates
+    const worldToScreenPoint = useCallback((worldX: number, worldY: number): Point => {
+        const screenX = (worldX - state.view.x) * state.view.zoom;
+        const screenY = (worldY - state.view.y) * state.view.zoom;
+        return { x: screenX, y: screenY };
+    }, [state.view.zoom, state.view.x, state.view.y]);
+
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        const worldPoint = clientToWorldPoint({ x: e.clientX, y: e.clientY });
+        const snappedPoint = snap ? snapEngine.current.snap(worldPoint)?.point || worldPoint : worldPoint;
+
+        if (state.tool === 'pan') {
+            setIsDragging(true);
+            setDragStart({ x: e.clientX, y: e.clientY });
+            return;
+        }
+
+        if (state.tool === 'select') {
+            setSelectionStart(snappedPoint);
+            return;
+        }
+    }, [state.tool, currentPoint, actions, snap, clientToWorldPoint]);
+
+
+    const handleContextMenu = (e: MouseEvent) => {
+        // e.preventDefault();
+        // if (state.tool == "draw") {
+        //     if (points.length > 1) {
+        //         const center = getCenterPoints(points);
+        //         actions.addNode({
+        //             ...center,
+        //             layerId: layersIds[layersIds.length - 1]!,
+        //             rotation: 0,
+        //             points: transformToLocal(points, center),
+        //             type: ''
+        //         });
+        //     }
+        //     setPoints([]);
+        // }
+        actions.setTool("select");
+
+    }
+
+    const handleMouseMove = useCallback((e: React.MouseEvent) => {
+        const worldPoint = clientToWorldPoint({ x: e.clientX, y: e.clientY });
+        const snappedPoint = snap ? snapEngine.current.snap(worldPoint, 25, state.view.zoom)?.point || worldPoint : worldPoint;
+
+        if (isDragging && dragStart) {
+            const deltaX = (dragStart.x - e.clientX) / state.view.zoom;
+            const deltaY = (dragStart.y - e.clientY) / state.view.zoom;
+
+            actions.updateView({
+                x: state.view.x + deltaX,
+                y: state.view.y + deltaY
+            });
+
+            setDragStart({ x: e.clientX, y: e.clientY });
+            return;
+        }
+
+        if (selectionStart && state.tool === 'select') {
+            setCurrentPoint(snappedPoint);
+            return;
+        }
+
+        setCurrentPoint(snappedPoint);
+    }, [isDragging, dragStart, selectionStart, state.tool, state.view, actions, snap, clientToWorldPoint]);
+
+    // Then use it in handleMouseUp:
+    const handleMouseUp = useCallback(() => {
+
+        if (state.tool === "draw" && currentPoint) {
+            return setPoints(prev => [...prev, currentPoint]);
+        }
+
+        setIsDragging(false);
+        setDragStart(null);
+
+        if (selectionStart && currentPoint && state.tool === "select") {
+            const minX = Math.min(selectionStart.x, currentPoint.x);
+            const maxX = Math.max(selectionStart.x, currentPoint.x);
+            const minY = Math.min(selectionStart.y, currentPoint.y);
+            const maxY = Math.max(selectionStart.y, currentPoint.y);
+
+            const selectedIds: string[] = [];
+
+            for (const node of state.data.nodes) {
+
+                const layer = layers.find(l => l.id === node.layerId);
+                if (layer?.locked || !layer?.visible) continue;
+
+                const center = { x: node.x, y: node.y };
+                const globalPoly = node.points.map(point => {
+                    const r = rotatePoint(point, center, node.rotation * (Math.PI / 180));
+                    return {
+                        x: r.x + center.x,
+                        y: r.y + center.y,
+                    };
+                });
+
+                // check if ANY vertex inside rectangle
+                const anyInside = globalPoly.some(pt =>
+                    pt.x >= minX && pt.x <= maxX &&
+                    pt.y >= minY && pt.y <= maxY
+                );
+
+                if (anyInside) {
+                    selectedIds.push(node.id);
+                }
+            }
+            actions.select(selectedIds);
+        }
+
+        setSelectionStart(null);
+
+    }, [selectionStart, currentPoint, state.tool, state.data, actions]);
+
+    const handleWheel = useCallback((e: React.WheelEvent) => {
+        e.preventDefault();
+
+        const rect = svgRef.current!.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const zoomIntensity = 0.001;
+        const delta = -e.deltaY * zoomIntensity;
+        const newZoom = Math.max(0.1, Math.min(10, state.view.zoom + delta));
+
+        // Get mouse position in world coordinates before zoom
+        const mouseWorldPos = clientToWorldPoint({ x: e.clientX, y: e.clientY });
+
+        // Calculate new view position to zoom to mouse pointer
+        const newX = mouseWorldPos.x - (mouseX / newZoom);
+        const newY = mouseWorldPos.y - (mouseY / newZoom);
+
+        actions.updateView({
+            zoom: newZoom,
+            x: newX,
+            y: newY
+        });
+    }, [state.view.zoom, state.view.x, state.view.y, actions, clientToWorldPoint]);
+
+    const handleMouseLeave = useCallback(() => {
+        setCurrentPoint(null);
+    }, []);
+
+
+    const renderSelectionBox = () => {
+        if (!selectionStart || !currentPoint || state.tool !== 'select') return null;
+
+        const startScreen = worldToScreenPoint(selectionStart.x, selectionStart.y);
+        const endScreen = worldToScreenPoint(currentPoint.x, currentPoint.y);
+
+        const x = Math.min(startScreen.x, endScreen.x);
+        const y = Math.min(startScreen.y, endScreen.y);
+        const boxWidth = Math.abs(endScreen.x - startScreen.x);
+        const boxHeight = Math.abs(endScreen.y - startScreen.y);
+
+        return (
+            <rect
+                x={x}
+                y={y}
+                width={boxWidth}
+                height={boxHeight}
+                fill="rgba(59, 130, 246, 0.1)"
+                stroke="#3b82f6"
+                strokeWidth={1}
+                strokeDasharray="4,2"
+            />
+        );
+    };
+
+
+
+    const updateRect = (container: HTMLElement) => {
+        const rect = container.getBoundingClientRect()
+        setRect(rect);
+    }
+
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const observer = new ResizeObserver(() => {
+            if (!containerRef.current) return;
+            updateRect(containerRef.current);
+        });
+        updateRect(containerRef.current);
+        observer.observe(containerRef.current);
+
+        return () => {
+            observer.disconnect();
+        }
+    }, [containerRef]);
+
+    // Add center indicator for debugging
+    const renderCenterIndicator = () => {
+        const centerScreen = worldToScreenPoint(0, 0);
+        return (
+            <g>
+                <circle
+                    cx={centerScreen.x}
+                    cy={centerScreen.y}
+                    r={4}
+                    fill="#10b981"
+                    opacity={0.8}
+                />
+                <text
+                    x={centerScreen.x + 10}
+                    y={centerScreen.y - 10}
+                    fill="#10b981"
+                    fontSize="10"
+                    fontFamily="monospace"
+                >
+                    (0,0)
+                </text>
+            </g>
+        );
+    };
+
+    return (
+        <PointerContext.Provider value={currentPoint}>
+            <SpotsProvider rect={rect}>
+                <div ref={containerRef} className={`floorplan-canvas ${className}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, background }} />
+
+                    <GridCanvas
+                        width={rect.width}
+                        height={rect.height}
+                        zoom={state.view.zoom}
+                        viewOffset={state.view}
+                    />
+
+                    <svg
+                        ref={svgRef}
+                        width={'100%'}
+                        height={'100%'}
+                        viewBox={viewBox}
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUp}
+                        onMouseLeave={handleMouseLeave}
+                        onWheel={handleWheel}
+                        onContextMenu={handleContextMenu}
+                        style={{
+                            cursor: isDragging ? 'grabbing' : (state.tool === 'pan' ? 'grab' : 'crosshair'),
+                            background: 'transparent',
+                            position: 'relative',
+                            zIndex: 2
+                        }}>
+
+                        {/* Content transformed to world coordinates */}
+                        <g transform={`translate(${-state.view.x * state.view.zoom}, ${-state.view.y * state.view.zoom}) scale(${state.view.zoom})`}>
+
+                            <NodeRender />
+
+                            {state.tool == "draw" && (
+                                <NodeDrawer
+                                    points={points}
+                                    currentPoint={currentPoint || { x: 0, y: 0 }}
+                                    zoom={state.view.zoom} />
+                            )}
+                        </g>
+
+                        {/* Selection box in screen coordinates */}
+                        {renderSelectionBox()}
+
+                        {/* Center indicator */}
+                        {renderCenterIndicator()}
+
+                        {/* Debug info */}
+                        <text x="10" y="20" fill="white" fontSize="12" fontFamily="monospace">
+                            Zoom: {state.view.zoom.toFixed(2)} | View: ({state.view.x.toFixed(1)}, {state.view.y.toFixed(1)})
+                        </text>
+                        {currentPoint && (
+                            <text x="10" y="35" fill="white" fontSize="12" fontFamily="monospace">
+                                Cursor: ({currentPoint.x.toFixed(1)}, {currentPoint.y.toFixed(1)})
+                            </text>
+                        )}
+                        <text x="10" y="50" fill="#10b981" fontSize="12" fontFamily="monospace">
+                            Center: (0,0) is at center of canvas
+                        </text>
+                    </svg>
+                </div>
+            </SpotsProvider>
+        </PointerContext.Provider>
+    );
+};
+
+export default FloorplanCanvas;

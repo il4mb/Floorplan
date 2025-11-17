@@ -1,0 +1,90 @@
+{
+    "dependencies": {
+        "@dnd-kit/core": "^6.3.1",
+        "@dnd-kit/sortable": "^10.0.0",
+        "@dnd-kit/utilities": "^3.2.2",
+        "@react-three/drei": "^10.7.7",
+        "@react-three/fiber": "^9.4.0",
+        "clsx": "^2.1.1",
+        "lodash": "^4.17.21",
+        "lucide-react": "^0.553.0",
+        "motion": "^12.23.24",
+        "react": "^19.2.0",
+        "three": "^0.181.1",
+        "uuid": "^13.0.0"
+    },
+    "name": "floorplan",
+    "version": "1.0.0",
+    "description": "Professional 2D floorplan editor for React",
+    "type": "module",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs",
+            "types": "./dist/index.d.ts"
+        },
+        "./components/*": {
+            "import": "./dist/components/*.js",
+            "require": "./dist/components/*.cjs",
+            "types": "./dist/components/*.d.ts"
+        },
+        "./styles.css": "./dist/styles.css"
+    },
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "scripts": {
+        "vite:dev": "vite",
+        "preview": "vite preview",
+        "build": "npm run build:types && npm run build:js",
+        "build:types": "tsc --emitDeclarationOnly --outDir dist",
+        "build:js": "rollup -c",
+        "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css",
+        "dev": "rollup -c -w",
+        "clean": "rimraf dist",
+        "prepack": "npm run clean && npm run build",
+        "type-check": "tsc --noEmit"
+    },
+    "peerDependencies": {
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0"
+    },
+    "devDependencies": {
+        "@rollup/plugin-commonjs": "^25.0.7",
+        "@rollup/plugin-node-resolve": "^15.2.3",
+        "@rollup/plugin-terser": "^0.4.4",
+        "@rollup/plugin-typescript": "^11.1.6",
+        "@tailwindcss/vite": "^4.1.17",
+        "@types/lodash": "^4.17.20",
+        "@types/node": "^24.10.1",
+        "@types/react": "^19.2.5",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^5.1.1",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+        "rollup": "^4.9.4",
+        "rollup-plugin-dts": "^6.1.0",
+        "rollup-plugin-peer-deps-external": "^2.2.4",
+        "rollup-plugin-postcss": "^4.0.2",
+        "tslib": "^2.6.2",
+        "typescript": "^5.9.3",
+        "vite": "^7.2.2",
+        "vite-plugin-dts": "^4.5.4"
+    },
+    "keywords": [
+        "floorplan",
+        "editor",
+        "2d",
+        "react",
+        "typescript",
+        "architecture",
+        "cad",
+        "svg"
+    ],
+    "author": "Ilham B",
+    "license": "MIT"
+}
