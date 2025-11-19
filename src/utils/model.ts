@@ -32,7 +32,7 @@ export type Model = {
     name: string;
     icon: FC<{ width: number; height: number; color: string; }>;
     actionbars?: Actionbar[];
-    render: FC<{ node: Node, selected: boolean; }>;
+    render: FC<{ node: Node, selected: boolean; updateNode: (key: string, value: any) => void; }>;
     properties?: Property[];
     onPropsChange?(this: NodeState): void;
 }

@@ -1,12 +1,13 @@
-import { ActionsContext, Event } from '@/hooks/useActionbars';
+import { ActionsContext, Callback, Event } from '@/hooks/useActionbars';
 import { useSelectedNode } from '@/hooks/useFloorplan';
 import { useModelMap } from '@/hooks/useModels';
 import { Actionbar } from '@/utils/model';
-import { Dispatch, ReactNode, SetStateAction, useCallback, useRef } from 'react';
+import { nanoid } from 'nanoid';
+import { Dispatch, ReactNode, SetStateAction, useCallback } from 'react';
 
 export interface ActionbarProviderProps {
     children?: ReactNode;
-    setListeners: Dispatch<SetStateAction<Map<string, (event: any) => void>>>;
+    setListeners: Dispatch<SetStateAction<Map<string, Map<string, Map<string, Callback>>>>>;
     activeToggles: Record<string, string>;
     setActiveToggles: Dispatch<SetStateAction<Record<string, string>>>;
     toggled: Actionbar | null;
@@ -16,15 +17,17 @@ export default function ActionbarProvider({ children, setListeners, activeToggle
 
     const modelMap = useModelMap();
     const selected = useSelectedNode();
-    const listenerIdCounter = useRef(0);
 
-    const generateId = useCallback(() => {
-        return `listener-${++listenerIdCounter.current}-${Date.now()}`;
-    }, []);
+    const getOnlyOneNode = useCallback(() => {
+        return selected.length === 1 ? selected[0] : null;
+    }, [selected])
+
 
     const toggleById = useCallback((itemId: string) => {
-        if (!selected?.[0]?.type) return;
-        const model = modelMap.get(selected[0]?.type);
+        const node = getOnlyOneNode();
+        if (!node) return;
+        
+        const model = modelMap.get(node?.type);
         if (!model?.actionbars) return;
 
         // Find the toolbar item by ID
@@ -45,6 +48,7 @@ export default function ActionbarProvider({ children, setListeners, activeToggle
 
             if (onEvent) {
                 onEvent({
+                    nodeId: node.id,
                     type: "untoggled",
                     toolbar,
                     context
@@ -62,6 +66,7 @@ export default function ActionbarProvider({ children, setListeners, activeToggle
                 const previousToolbar = model.actionbars.find(t => t.id === previousActiveId);
                 if (previousToolbar) {
                     onEvent({
+                        nodeId: node.id,
                         type: "untoggled",
                         toolbar: previousToolbar,
                         context
@@ -72,13 +77,14 @@ export default function ActionbarProvider({ children, setListeners, activeToggle
             // Toggle new item
             if (onEvent) {
                 onEvent({
+                    nodeId: node.id,
                     type: "toggled",
                     toolbar,
                     context
                 });
             }
         }
-    }, [modelMap, activeToggles, onEvent]);
+    }, [modelMap, activeToggles, getOnlyOneNode, onEvent]);
 
     const isToggled = useCallback((itemId: string) => {
         if (!selected?.[0]?.type) return false;
@@ -92,53 +98,54 @@ export default function ActionbarProvider({ children, setListeners, activeToggle
         return activeToggles[context] === itemId;
     }, [modelMap, activeToggles]);
 
-    const addToggledListener = useCallback((listener: (event: any) => void) => {
-        const id = generateId();
-        const listenerId = `toggled-${id}`;
-        setListeners(prev => new Map(prev).set(listenerId, listener));
+    const addActionListener = useCallback((actionId: string, callback: (event: any) => void) => {
+        
+        const node = getOnlyOneNode();
+        if (!node) return;
+        let listenerId = nanoid();
+
+        setListeners(prev => {
+
+            const mapListener = new Map(prev);
+            if (!mapListener.has(node.id)) {
+                mapListener.set(node.id, new Map());
+            }
+
+            const actionMap = mapListener.get(node.id)!;
+            if (!actionMap.has(actionId)) {
+                actionMap.set(actionId, new Map());
+            }
+
+            const listenersForAction = actionMap.get(actionId)!;
+            listenersForAction.set(listenerId, callback);
+            return mapListener;
+        });
+
         return () => {
+            // unsubscribe
             setListeners(prev => {
-                const newMap = new Map(prev);
-                newMap.delete(listenerId);
-                return newMap;
+                const mapListener = new Map(prev);
+                const actionMap = mapListener.get(node.id);
+                if (!actionMap) return prev;
+
+                const listenersForAction = actionMap.get(actionId);
+                if (!listenersForAction) return prev;
+
+                listenersForAction.delete(listenerId);
+                if (listenersForAction.size === 0) {
+                    actionMap.delete(actionId);
+                }
+                if (actionMap.size === 0) {
+                    mapListener.delete(node.id);
+                }
+                return mapListener;
             });
         };
-    }, [generateId]);
-
-    const addClickListener = useCallback((listener: (event: any) => void) => {
-        const id = generateId();
-        const listenerId = `click-${id}`;
-        setListeners(prev => new Map(prev).set(listenerId, listener));
-        return () => {
-            setListeners(prev => {
-                const newMap = new Map(prev);
-                newMap.delete(listenerId);
-                return newMap;
-            });
-        };
-    }, [generateId]);
-
-    const addUntoggledListener = useCallback((listener: (event: any) => void) => {
-        const id = generateId();
-        const listenerId = `untoggled-${id}`;
-        setListeners(prev => new Map(prev).set(listenerId, listener));
-        return () => {
-            setListeners(prev => {
-                const newMap = new Map(prev);
-                newMap.delete(listenerId);
-                return newMap;
-            });
-        };
-    }, [generateId]);
-
-    
+    }, [getOnlyOneNode]);
 
     return (
-        <ActionsContext.Provider
-            value={{
-                addClickListener,
-                addToggledListener,
-                addUntoggledListener,
+        <ActionsContext.Provider value={{
+                addActionListener,
                 toggleById,
                 isToggled,
                 toggled

@@ -3,10 +3,11 @@ import { useFloorplanContext } from '../FloorplanProvider';
 import { useLayers } from '../LayersProvider';
 import NodeLabel from './NodeLabel';
 import ModelRender from '../models/ModelRender';
+import { NodeContext } from '@/hooks/useNode';
 
 export default function NodeRender() {
 
-    const { state } = useFloorplanContext();
+    const { state, actions } = useFloorplanContext();
     const { layers } = useLayers();
     type NodeType = typeof state.data.nodes[number];
 
@@ -23,6 +24,11 @@ export default function NodeRender() {
             .sort((a, b) => a.order - b.order);
     }, [layers]);
 
+
+    const handleSetData = (nodeId: string) => (key: string, value: any) => {
+        actions.updateNode(nodeId, { [key]: value });
+    }
+
     return (
         <>
             {orderedLayers.map(layer => {
@@ -36,18 +42,23 @@ export default function NodeRender() {
                         id={`layer-${layer.id}`}
                         style={{ opacity: locked ? 0.5 : 1 }}>
                         {nodes.map(node => {
-                            
+
                             const isSelected = state.selection.includes(node.id);
                             const zoom = state.view.zoom;
                             const outlineWidth = Math.max(0.1, Math.min(10, 5 / zoom));
 
                             return (
-                                <g key={node.id} style={{ outline: isSelected ? `${outlineWidth}px dashed orange` : 'none', }}>
-                                    <ModelRender node={node} selected={isSelected} />
-                                    {node.label && (
-                                        <NodeLabel label={node.label} anchor={{ x: node.x, y: node.y }} />
-                                    )}
-                                </g>
+                                <NodeContext.Provider value={{ node, setData: handleSetData(node.id) }}>
+                                    <g key={node.id} 
+                                    transform={`translate(${node.x}, ${node.y}) rotate(${node.rotation})`}
+                                    //style={{ outline: isSelected ? `${outlineWidth}px dashed orange` : 'none', }}
+                                    >
+                                        <ModelRender node={node} selected={isSelected} updateNode={handleSetData(node.id)} />
+                                        {node.label && (
+                                            <NodeLabel label={node.label} anchor={{ x: node.x, y: node.y }} />
+                                        )}
+                                    </g>
+                                </NodeContext.Provider>
                             );
                         })}
                     </g>

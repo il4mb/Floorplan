@@ -7,3 +7,8 @@ export const usePointer = () => {
     if (typeof ctx == "undefined") throw new Error("usePointer should call inside PointerContext");
     return ctx;
 }
+
+
+export const usePointerClick = () => {
+
+}

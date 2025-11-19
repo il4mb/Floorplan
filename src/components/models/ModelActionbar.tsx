@@ -1,6 +1,6 @@
 import { useModel } from '@/hooks/useModels';
 import { Node } from '@/types';
-import { Dispatch, SetStateAction, useState } from 'react';
+import { Dispatch, SetStateAction } from 'react';
 import { ToolButton } from '../ui/ToolButton';
 import { Actionbar } from '@/utils/model';
 import { Event } from '@/hooks/useActionbars';
@@ -57,6 +57,7 @@ export default function ModelActionbar({ node, onEvent, activeToggles, setActive
                 const toolbar = model.actionbars!.find(t => t.id === previousActiveId);
                 if (toolbar) {
                     onEvent({
+                        nodeId: node.id,
                         type: "untoggled",
                         toolbar,
                         context
@@ -69,6 +70,7 @@ export default function ModelActionbar({ node, onEvent, activeToggles, setActive
                 const previousToolbar = model.actionbars!.find(t => t.id === previousActiveId);
                 if (previousToolbar) {
                     onEvent({
+                        nodeId: node.id,
                         type: "untoggled",
                         toolbar: previousToolbar,
                         context
@@ -81,6 +83,7 @@ export default function ModelActionbar({ node, onEvent, activeToggles, setActive
                 const newToolbar = model.actionbars!.find(t => t.id === itemId);
                 if (newToolbar) {
                     onEvent({
+                        nodeId: node.id,
                         type: "toggled",
                         toolbar: newToolbar,
                         context
@@ -98,6 +101,7 @@ export default function ModelActionbar({ node, onEvent, activeToggles, setActive
         } else {
             if (onEvent) {
                 onEvent({
+                    nodeId: node.id,
                     type: "click",
                     toolbar: item,
                     context

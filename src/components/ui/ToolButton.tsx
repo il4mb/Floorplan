@@ -18,7 +18,7 @@ export const ToolButton: React.FC<ToolButtonProps> = ({ active, disabled, title,
             disabled={disabled}
             onClick={onClick}
             className={clsx(
-                "w-8 h-8 flex items-center justify-center rounded-lg p-2 border transition-colors",
+                "w-8 h-8 flex items-center justify-center rounded-lg p-1 border transition-colors",
                 disabled && "opacity-40 cursor-not-allowed",
                 !disabled &&
                 (active

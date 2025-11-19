@@ -4,11 +4,11 @@ import { SnapEngine } from '../utils/snap';
 import { useFloorplanContext } from './FloorplanProvider';
 import GridCanvas from './GridCanvas';
 import NodeRender from './nodes/NodeRender';
-import NodeDrawer from './nodes/NodeDrawer';
 import { rotatePoint } from '../utils/geometry';
 import { useLayers } from './LayersProvider';
 import SpotsProvider from './SpotsProvider';
 import { PointerContext } from '@/hooks/usePointer';
+import { Callback, CanvasContext, EventListeners, EventName, Unsubscribe } from '@/hooks/useCanvas';
 
 interface FloorplanCanvasProps {
     gridSize?: number;
@@ -19,8 +19,9 @@ interface FloorplanCanvasProps {
 
 const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap = true, className = '', background = 'rgb(10, 17, 19)' }) => {
 
-    const { layers, selected: layersIds } = useLayers();
-    const [points, setPoints] = useState<Point[]>([]);
+    const { layers } = useLayers();
+    const [listeners, setListeners] = useState<EventListeners>(new Map());
+    // const [points, setPoints] = useState<Point[]>([]);
     const [rect, setRect] = useState<Rect>({ width: 0, height: 0, x: 0, y: 0 });
     const containerRef = useRef<HTMLDivElement>(null);
     const { state, actions } = useFloorplanContext();
@@ -33,23 +34,31 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
     const snapEngine = useRef(new SnapEngine(gridSize));
     const viewBox = useMemo(() => `0 0 ${rect.width} ${rect.height}`, [rect]);
 
-    // Center the view on (0,0) when component mounts or size changes
-    useEffect(() => {
-        if (rect.width > 0 && rect.height > 0 && !isInitialized) {
-            // Calculate the center position so that (0,0) is in the center of the canvas
-            const centerX = -rect.width / (2 * state.view.zoom);
-            const centerY = -rect.height / (2 * state.view.zoom);
+    const invokeListeners = useCallback((event: EventName, e: MouseEvent) => {
+        listeners.get(event)?.forEach((callback) => {
+            try {
+                callback(e);
+            } catch (e) {
+                console.error(e);
+            }
+        });
+    }, [listeners]);
 
-            actions.updateView({
-                x: centerX,
-                y: centerY
-            });
-
-            setIsInitialized(true);
-            console.log('Centered view at:', { centerX, centerY, width: rect.width, height: rect.height, zoom: state.view.zoom });
+    const addListener = useCallback((event: EventName, callback: Callback): Unsubscribe => {
+        let eventMap = listeners.get(event);
+        if (!eventMap) {
+            eventMap = new Map();
+            listeners.set(event, eventMap);
         }
-        snapEngine.current.enableAdaptiveGrid(true);
-    }, [rect, state.view.zoom, actions, isInitialized]);
+
+        const id = crypto.randomUUID();
+        eventMap.set(id, callback);
+
+        return () => {
+            eventMap?.delete(id);
+        };
+    }, [listeners]);
+
 
     // Convert screen coordinates to world coordinates
     const clientToWorldPoint = useCallback(({ x, y }: Point): Point => {
@@ -68,13 +77,30 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
     }, [state.view.zoom, state.view.x, state.view.y]);
 
     // Convert world coordinates to screen coordinates
-    const worldToScreenPoint = useCallback((worldX: number, worldY: number): Point => {
-        const screenX = (worldX - state.view.x) * state.view.zoom;
-        const screenY = (worldY - state.view.y) * state.view.zoom;
+    const worldToScreenPoint = useCallback(({ x, y }: Point): Point => {
+        const screenX = (x - state.view.x) * state.view.zoom;
+        const screenY = (y - state.view.y) * state.view.zoom;
         return { x: screenX, y: screenY };
     }, [state.view.zoom, state.view.x, state.view.y]);
 
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+
+    const snapPoint = useCallback((point: Point, threshold = 25) => {
+        return snapEngine.current.snap(point, threshold, state.view.zoom)?.point || point;
+    }, [state.view.zoom]);
+
+
+    const handleContextMenu = (e: MouseEvent) => {
+        e.preventDefault();
+        invokeListeners("contexmenu", e);
+        actions.setTool("select");
+    }
+
+
+    const handleMouseDown = useCallback((e: MouseEvent) => {
+
+        invokeListeners("mousedown", e);
+        if (e.isDefaultPrevented()) return;
+
         const worldPoint = clientToWorldPoint({ x: e.clientX, y: e.clientY });
         const snappedPoint = snap ? snapEngine.current.snap(worldPoint)?.point || worldPoint : worldPoint;
 
@@ -88,31 +114,16 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
             setSelectionStart(snappedPoint);
             return;
         }
-    }, [state.tool, currentPoint, actions, snap, clientToWorldPoint]);
+    }, [state.tool, currentPoint, actions, snap, clientToWorldPoint, invokeListeners]);
 
-
-    const handleContextMenu = (e: MouseEvent) => {
-        // e.preventDefault();
-        // if (state.tool == "draw") {
-        //     if (points.length > 1) {
-        //         const center = getCenterPoints(points);
-        //         actions.addNode({
-        //             ...center,
-        //             layerId: layersIds[layersIds.length - 1]!,
-        //             rotation: 0,
-        //             points: transformToLocal(points, center),
-        //             type: ''
-        //         });
-        //     }
-        //     setPoints([]);
-        // }
-        actions.setTool("select");
-
-    }
 
     const handleMouseMove = useCallback((e: React.MouseEvent) => {
+
+        invokeListeners("mousemove", e);
+        if (e.isDefaultPrevented()) return;
+
         const worldPoint = clientToWorldPoint({ x: e.clientX, y: e.clientY });
-        const snappedPoint = snap ? snapEngine.current.snap(worldPoint, 25, state.view.zoom)?.point || worldPoint : worldPoint;
+        const snappedPoint = snap ? snapPoint(worldPoint) : worldPoint;
 
         if (isDragging && dragStart) {
             const deltaX = (dragStart.x - e.clientX) / state.view.zoom;
@@ -133,56 +144,67 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
         }
 
         setCurrentPoint(snappedPoint);
-    }, [isDragging, dragStart, selectionStart, state.tool, state.view, actions, snap, clientToWorldPoint]);
+    }, [isDragging, dragStart, selectionStart, state.tool, state.view, actions, snap, clientToWorldPoint, invokeListeners, snapPoint]);
 
     // Then use it in handleMouseUp:
-    const handleMouseUp = useCallback(() => {
+    const handleMouseUp = useCallback((e: MouseEvent) => {
 
-        if (state.tool === "draw" && currentPoint) {
-            return setPoints(prev => [...prev, currentPoint]);
-        }
+        invokeListeners("mouseup", e);
+        if (!e.isDefaultPrevented()) {
 
-        setIsDragging(false);
-        setDragStart(null);
+            setIsDragging(false);
+            setDragStart(null);
 
-        if (selectionStart && currentPoint && state.tool === "select") {
-            const minX = Math.min(selectionStart.x, currentPoint.x);
-            const maxX = Math.max(selectionStart.x, currentPoint.x);
-            const minY = Math.min(selectionStart.y, currentPoint.y);
-            const maxY = Math.max(selectionStart.y, currentPoint.y);
+            if (selectionStart && currentPoint && state.tool === "select") {
 
-            const selectedIds: string[] = [];
+                const minX = Math.min(selectionStart.x, currentPoint.x);
+                const maxX = Math.max(selectionStart.x, currentPoint.x);
+                const minY = Math.min(selectionStart.y, currentPoint.y);
+                const maxY = Math.max(selectionStart.y, currentPoint.y);
 
-            for (const node of state.data.nodes) {
+                const selectedIds: string[] = [];
 
-                const layer = layers.find(l => l.id === node.layerId);
-                if (layer?.locked || !layer?.visible) continue;
+                for (const node of state.data.nodes) {
 
-                const center = { x: node.x, y: node.y };
-                const globalPoly = node.points.map(point => {
-                    const r = rotatePoint(point, center, node.rotation * (Math.PI / 180));
-                    return {
-                        x: r.x + center.x,
-                        y: r.y + center.y,
-                    };
-                });
+                    const layer = layers.find(l => l.id === node.layerId);
+                    if (layer?.locked || !layer?.visible) continue;
 
-                // check if ANY vertex inside rectangle
-                const anyInside = globalPoly.some(pt =>
-                    pt.x >= minX && pt.x <= maxX &&
-                    pt.y >= minY && pt.y <= maxY
-                );
+                    const center = { x: node.x, y: node.y };
+                    const globalPoly = node.points.map(point => {
+                        const r = rotatePoint(point, center, node.rotation * (Math.PI / 180));
+                        return {
+                            x: r.x + center.x,
+                            y: r.y + center.y,
+                        };
+                    });
 
-                if (anyInside) {
-                    selectedIds.push(node.id);
+                    // check if ANY vertex inside rectangle
+                    const anyInside = globalPoly.some(pt =>
+                        pt.x >= minX && pt.x <= maxX &&
+                        pt.y >= minY && pt.y <= maxY
+                    ) || center.x >= minX && center.x <= maxX && center.y >= minY && center.y <= maxY;
+
+                    if (anyInside) {
+                        selectedIds.push(node.id);
+                    }
                 }
+                actions.select(selectedIds);
             }
-            actions.select(selectedIds);
         }
 
         setSelectionStart(null);
 
     }, [selectionStart, currentPoint, state.tool, state.data, actions]);
+
+    const handleMouseLeave = useCallback((e: MouseEvent) => {
+        invokeListeners("mouseleave", e);
+        if (e.isDefaultPrevented()) return;
+        setCurrentPoint(null);
+    }, []);
+
+    const handleMouseEnter = useCallback((e: MouseEvent) => {
+        invokeListeners("mouseenter", e);
+    }, []);
 
     const handleWheel = useCallback((e: React.WheelEvent) => {
         e.preventDefault();
@@ -209,16 +231,12 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
         });
     }, [state.view.zoom, state.view.x, state.view.y, actions, clientToWorldPoint]);
 
-    const handleMouseLeave = useCallback(() => {
-        setCurrentPoint(null);
-    }, []);
-
 
     const renderSelectionBox = () => {
         if (!selectionStart || !currentPoint || state.tool !== 'select') return null;
 
-        const startScreen = worldToScreenPoint(selectionStart.x, selectionStart.y);
-        const endScreen = worldToScreenPoint(currentPoint.x, currentPoint.y);
+        const startScreen = worldToScreenPoint(selectionStart);
+        const endScreen = worldToScreenPoint(currentPoint);
 
         const x = Math.min(startScreen.x, endScreen.x);
         const y = Math.min(startScreen.y, endScreen.y);
@@ -239,12 +257,26 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
         );
     };
 
-
-
     const updateRect = (container: HTMLElement) => {
         const rect = container.getBoundingClientRect()
         setRect(rect);
     }
+
+    useEffect(() => {
+        if (rect.width > 0 && rect.height > 0 && !isInitialized) {
+            const centerX = -rect.width / (2 * state.view.zoom);
+            const centerY = -rect.height / (2 * state.view.zoom);
+
+            actions.updateView({
+                x: centerX,
+                y: centerY
+            });
+
+            setIsInitialized(true);
+            console.log('Centered view at:', { centerX, centerY, width: rect.width, height: rect.height, zoom: state.view.zoom });
+        }
+        snapEngine.current.enableAdaptiveGrid(true);
+    }, [rect, state.view.zoom, actions, isInitialized]);
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -262,7 +294,7 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
 
     // Add center indicator for debugging
     const renderCenterIndicator = () => {
-        const centerScreen = worldToScreenPoint(0, 0);
+        const centerScreen = worldToScreenPoint({ x: 0, y: 0 });
         return (
             <g>
                 <circle
@@ -277,8 +309,7 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
                     y={centerScreen.y - 10}
                     fill="#10b981"
                     fontSize="10"
-                    fontFamily="monospace"
-                >
+                    fontFamily="monospace">
                     (0,0)
                 </text>
             </g>
@@ -288,67 +319,70 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
     return (
         <PointerContext.Provider value={currentPoint}>
             <SpotsProvider rect={rect}>
-                <div ref={containerRef} className={`floorplan-canvas ${className}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, background }} />
+                <CanvasContext.Provider value={{ snapPoint, addListener, clientToWorldPoint, worldToScreenPoint }}>
+                    <div ref={containerRef} className={`floorplan-canvas ${className}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
+                        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, background }} />
 
-                    <GridCanvas
-                        width={rect.width}
-                        height={rect.height}
-                        zoom={state.view.zoom}
-                        viewOffset={state.view}
-                    />
+                        <GridCanvas
+                            width={rect.width}
+                            height={rect.height}
+                            zoom={state.view.zoom}
+                            viewOffset={state.view}
+                        />
 
-                    <svg
-                        ref={svgRef}
-                        width={'100%'}
-                        height={'100%'}
-                        viewBox={viewBox}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onMouseLeave={handleMouseLeave}
-                        onWheel={handleWheel}
-                        onContextMenu={handleContextMenu}
-                        style={{
-                            cursor: isDragging ? 'grabbing' : (state.tool === 'pan' ? 'grab' : 'crosshair'),
-                            background: 'transparent',
-                            position: 'relative',
-                            zIndex: 2
-                        }}>
+                        <svg
+                            ref={svgRef}
+                            width={'100%'}
+                            height={'100%'}
+                            viewBox={viewBox}
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onMouseLeave={handleMouseLeave}
+                            onMouseEnter={handleMouseEnter}
+                            onWheel={handleWheel}
+                            onContextMenu={handleContextMenu}
+                            style={{
+                                cursor: isDragging ? 'grabbing' : (state.tool === 'pan' ? 'grab' : 'crosshair'),
+                                background: 'transparent',
+                                position: 'relative',
+                                zIndex: 2
+                            }}>
 
-                        {/* Content transformed to world coordinates */}
-                        <g transform={`translate(${-state.view.x * state.view.zoom}, ${-state.view.y * state.view.zoom}) scale(${state.view.zoom})`}>
+                            {/* Content transformed to world coordinates */}
+                            <g transform={`translate(${-state.view.x * state.view.zoom}, ${-state.view.y * state.view.zoom}) scale(${state.view.zoom})`}>
 
-                            <NodeRender />
+                                <NodeRender />
 
-                            {state.tool == "draw" && (
+                                {/* {state.tool == "draw" && (
                                 <NodeDrawer
                                     points={points}
                                     currentPoint={currentPoint || { x: 0, y: 0 }}
                                     zoom={state.view.zoom} />
-                            )}
-                        </g>
+                            )} */}
+                            </g>
 
-                        {/* Selection box in screen coordinates */}
-                        {renderSelectionBox()}
+                            {/* Selection box in screen coordinates */}
+                            {renderSelectionBox()}
 
-                        {/* Center indicator */}
-                        {renderCenterIndicator()}
+                            {/* Center indicator */}
+                            {renderCenterIndicator()}
 
-                        {/* Debug info */}
-                        <text x="10" y="20" fill="white" fontSize="12" fontFamily="monospace">
-                            Zoom: {state.view.zoom.toFixed(2)} | View: ({state.view.x.toFixed(1)}, {state.view.y.toFixed(1)})
-                        </text>
-                        {currentPoint && (
-                            <text x="10" y="35" fill="white" fontSize="12" fontFamily="monospace">
-                                Cursor: ({currentPoint.x.toFixed(1)}, {currentPoint.y.toFixed(1)})
+                            {/* Debug info */}
+                            <text x="10" y="20" fill="white" fontSize="12" fontFamily="monospace">
+                                Zoom: {state.view.zoom.toFixed(2)} | View: ({state.view.x.toFixed(1)}, {state.view.y.toFixed(1)})
                             </text>
-                        )}
-                        <text x="10" y="50" fill="#10b981" fontSize="12" fontFamily="monospace">
-                            Center: (0,0) is at center of canvas
-                        </text>
-                    </svg>
-                </div>
+                            {currentPoint && (
+                                <text x="10" y="35" fill="white" fontSize="12" fontFamily="monospace">
+                                    Cursor: ({currentPoint.x.toFixed(1)}, {currentPoint.y.toFixed(1)})
+                                </text>
+                            )}
+                            <text x="10" y="50" fill="#10b981" fontSize="12" fontFamily="monospace">
+                                Center: (0,0) is at center of canvas
+                            </text>
+                        </svg>
+                    </div>
+                </CanvasContext.Provider>
             </SpotsProvider>
         </PointerContext.Provider>
     );

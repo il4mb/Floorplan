@@ -6,12 +6,10 @@ import Toolbox from './components/Toolbox';
 // @ts-ignore
 import "./styles.css";
 import { FloorplanData } from './types';
-import NodeToolbox from './components/nodes/NodeToolbox';
 import LayersProvider from './components/LayersProvider';
 import LayerList from './components/inspector/LayerList';
 import Inspector from './components/inspector/Inspector';
 import ModelGallery from './components/models/ModelGallery';
-import ToolbarProvider from './components/SpotsProvider';
 
 
 const samplePlan: FloorplanData = {
@@ -39,7 +37,7 @@ const samplePlan: FloorplanData = {
             id: 'node1',
             layerId: '1',
             x: 0,
-            y: 50,
+            y: 100,
             rotation: 180,
             thickness: 10
         }

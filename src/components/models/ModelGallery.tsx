@@ -17,7 +17,7 @@ export default function ModelGallery() {
     const onClick = (type: string) => useCallback(() => {
         const model = modelArray.find(m => m.type == type);
         if (!model || !selectedLayerId) return;
-        const id = actions.addNode({
+        actions.addNode({
             type: model.type,
             layerId: selectedLayerId,
             x: 0,
@@ -25,8 +25,6 @@ export default function ModelGallery() {
             rotation: 0,
             points: []
         });
-
-        actions.select([id]);
     }, [selectedLayerId, modelArray]);
 
     return (

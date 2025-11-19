@@ -1,10 +1,11 @@
 // src/components/FloorplanProvider.tsx
+
 import React, { useContext, useReducer, useCallback, useEffect, useMemo } from 'react';
 import { FloorplanData, FloorplanState, FloorplanActions, Node, Tool, ViewState } from '../types';
 import { exportToJSON, importFromJSON, exportToSVG } from '../utils/exportImport';
 import { FloorplanContext, floorplanReducer, initialState } from '@/hooks/useFloorplan';
 import ModelProvider from './models/ModelProvider';
-
+import { nanoid } from 'nanoid';
 
 interface FloorplanProviderProps {
     children: React.ReactNode;
@@ -67,7 +68,7 @@ export const FloorplanProvider: React.FC<FloorplanProviderProps> = ({
     const actions: FloorplanActions = {
 
         addNode: useCallback((node: Omit<Node, 'id'>) => {
-            const id = `node-${Date.now()}`;
+            const id = nanoid()
             if (!value) {
                 dispatch({
                     type: 'ADD_NODE',

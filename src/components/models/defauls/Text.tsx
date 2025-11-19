@@ -10,7 +10,9 @@ export default {
 
         return (
             <>
-
+                <text fill="red">
+                    Hallo World
+                </text>
             </>
         )
     }

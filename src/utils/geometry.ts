@@ -31,26 +31,6 @@ export function rotatePoint(point: Point, center: Point, angle: number) {
     }
 }
 
-// export const rotatePoint = (point: Point, center: Point, angle: number): Point => {
-//     const s = Math.sin(angle);
-//     const c = Math.cos(angle);
-
-//     const translated = {
-//         x: point.x, //- center.x,
-//         y: point.y// - center.y
-//     };
-
-//     const rotated = {
-//         x: translated.x * c - translated.y * s,
-//         y: translated.x * s + translated.y * c
-//     };
-
-//     return {
-//         x: rotated.x + center.x,
-//         y: rotated.y + center.y
-//     };
-// };
-
 export const boundingBox = (points: Point[]): BoundingBox => {
     const xs = points.map(p => p.x);
     const ys = points.map(p => p.y);
