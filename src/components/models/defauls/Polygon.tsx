@@ -1,35 +1,45 @@
-import { MousePointerClick, Waypoints } from "lucide-react";
+import { Waypoints } from "lucide-react";
 import { Model } from "@/utils/model";
-import { useEffect, useMemo, useState } from "react";
-import { distance, rotatePoint } from "@/utils/geometry";
-import { useActionListener, useToggleById } from "@/hooks/useActionbars";
-import { usePointer } from "@/hooks/usePointer";
-import { useCanvas, useMouseDown, useMouseMove, useMouseUp } from "@/hooks/useCanvas";
+import { MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Verticle from "@/icon/Verticle";
+import { Node, Vert } from "@/types";
+import { useNodeGeometry } from "@/hooks/useNode";
+import PolylineDrawer from "./components/PolylineDrawer";
+import PolygonDrawer from "./components/PolygonDrawer";
+
+
+export type PolygonNode = Node & {
+    points: Vert[];
+    join: boolean;
+}
 
 export default {
 
     type: "polygon",
     name: "Polygon",
     icon: (props) => <Waypoints {...props} />,
+
     actionbars: [
         {
             icon: <Verticle width={22} height={22} varian="add" />,
             id: "point",
             context: "polygon",
-            toggle: true
+            toggle: true,
+            tooltip: "Add Points"
         },
         {
             icon: <Verticle width={22} height={22} varian="move" />,
             id: "move",
             context: "polygon",
-            toggle: true
+            toggle: true,
+            tooltip: "Move Points"
         },
         {
             icon: <Verticle width={22} height={22} varian="delete" />,
             id: "delete",
             context: "polygon",
-            toggle: true
+            toggle: true,
+            tooltip: "Delete Points"
         }
     ],
     properties: [
@@ -37,117 +47,105 @@ export default {
             type: "compose",
             name: "points",
             label: "Points",
-            properties: [
-
-            ]
+            properties: []
         },
-
     ],
 
     render({ node, selected, updateNode }) {
 
-        const { clientToWorldPoint, snapPoint } = useCanvas();
-        const [mode, setMode] = useState<string>();
-        const toggleById = useToggleById();
-        const pointer = usePointer();
+        const [editing, setEditing] = useState(false);
+        const { localToWorld } = useNodeGeometry();
+        const rotatedWorldPoints = useMemo(() => {
+            if (!node.points) return [];
 
-        const rotated = useMemo(() =>
-            node.points.map(p =>
-                rotatePoint(p, { x: node.x, y: node.y }, node.rotation * (Math.PI / 180))),
-            [node.points, node.x, node.y, node.rotation]);
-        const translated = useMemo(() => rotated.map(e => ({ x: e.x - node.x, y: e.y - node.y })), [rotated]);
-        const endPoint = useMemo(() => translated.length > 0 && translated[translated.length - 1], [translated])
-        const points = useMemo(() => translated.map(e => [e.x, e.y].join(",")).join(" "), [translated]);
-        const [moveIndex, setMoveIndex] = useState(-1);
+            const angle = node.rotation * Math.PI / 180;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
 
-        useMouseMove((e) => {
-            if (!selected || moveIndex < 0 || mode !== "move") return;
-            e.preventDefault();
-            const worldPoint = clientToWorldPoint({ x: e.clientX, y: e.clientY });
-            updateNode("points", node.points.map((point, index) => (index != moveIndex ? point : snapPoint(worldPoint))));
-        }, [moveIndex, selected, mode, snapPoint]);
+            return node.points.map(p => {
+                const rx = p.x * cos - p.y * sin;
+                const ry = p.x * sin + p.y * cos;
 
-        useMouseDown((e) => {
-            if (!selected || mode !== "move") return;
+                const world = {
+                    x: node.x + rx,
+                    y: node.y + ry,
+                };
 
-            const worldPoint = clientToWorldPoint({ x: e.clientX, y: e.clientY });
-            const closed = rotated.findIndex(e => distance(worldPoint, e) <= 35);
-            if (closed > -1) {
-                e.preventDefault();
-                setMoveIndex(closed);
-            }
-        }, [selected, rotated, mode]);
+                return world;
+            });
+        }, [node.points, node.x, node.y, node.rotation, localToWorld]);
 
-        useMouseUp((e) => {
-            if (!selected) return;
-            setMoveIndex(-1);
-            if (e.button === 0 && mode == "point") {
-                e.preventDefault();
-                updateNode("points", [...node.points, pointer]);
-            }
-        }, [selected, mode, pointer]);
+        const points = useMemo(() => rotatedWorldPoints.map(e => [e.x, e.y].join(",")).join(" "), [rotatedWorldPoints]);
 
-        useActionListener(["point", "move", "delete"], (event) => {
-            if (event.type == "toggled") {
-                setMode(event.toolbar.id);
-            }
+        const handleDoubleClick = useCallback(() => {
+            if(!selected) return;
+            setEditing(true);
+        }, [selected]);
+        const handleMouseDown = useCallback((e: MouseEvent) => {
+            if (selected && !editing) e.preventDefault();
+        }, [editing, selected]);
+
+        useEffect(() => {
+            setEditing(false);
         }, [selected]);
 
         useEffect(() => {
-            return () => {
-                setMode(undefined);
-            }
-        }, [selected]);
-
-        useEffect(() => {
-            if (!selected) return;
-            if (node.points.length == 0 && typeof mode == "undefined") {
-                toggleById("point");
-            } else {
-                toggleById("move");
-            }
-        }, [selected]);
+            if (!selected || editing) return;
+            setEditing(node.points.length <= 1);
+        }, [node.points, selected]);
 
         return (
-            <>
-                <polyline
-                    points={points}
-                    strokeLinejoin='round'
-                    strokeWidth={`${node.thickness || 10}px`}
-                    stroke={selected ? '#e68200' : '#fff'}
-                    fill="#3468eb8" />
-                <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={4}
-                    fill="#fca103"
-                    opacity={0.8}
-                />
-                {selected && mode == "point" && pointer != null && (
+            <g onDoubleClick={handleDoubleClick} onMouseDown={handleMouseDown}>
+                {/* Main polygon */}
+                {(node.points.length > 2 && node.join) ? (
                     <>
-                        <circle
-                            cx={pointer.x}
-                            cy={pointer.y}
-                            r={8}
-                            fill="#29a116"
+                        <polygon points={points}
+                            strokeLinejoin="round"
+                            strokeLinecap="round"
+                            strokeWidth={`${node.thickness || 10}px`}
+                            stroke={selected ? '#e68200' : '#fff'}
+                            fill={node.points.length >= 3 ? "#3468eb88" : "none"}
+                            opacity={0.8} />
+                        {editing && (
+                            <PolygonDrawer
+                                selected={selected}
+                                worldVerts={rotatedWorldPoints}
+                                node={node}
+                                updateNode={updateNode} />
+                        )}
+
+                    </>
+                ) : (
+                    <>
+                        <polyline
+                            points={points}
+                            strokeLinejoin="round"
+                            strokeLinecap="round"
+                            strokeWidth={`${node.thickness || 10}px`}
+                            stroke={selected ? '#e68200' : '#fff'}
+                            fill={node.points.length >= 3 ? "#3468eb88" : "none"}
                             opacity={0.8}
                         />
-                        {endPoint && (
-                            <line x1={endPoint.x} y1={endPoint.y} x2={pointer.x} y2={pointer.y} stroke="#29a116" strokeDasharray={"10 10"} strokeWidth={4} />
+                        {editing && (
+                            <PolylineDrawer
+                                selected={selected}
+                                node={node}
+                                updateNode={updateNode} />
                         )}
                     </>
                 )}
-                {selected && translated.map(({ x, y }, index) => (
+
+                {/* Center point */}
+                {selected && (
                     <circle
-                        key={index}
-                        cx={x}
-                        cy={y}
-                        r={8}
-                        fill="#29a116"
+                        cx={node.x}
+                        cy={node.y}
+                        r={4}
+                        fill="#fca103"
                         opacity={0.8}
                     />
-                ))}
-            </>
+                )}
+            </g>
         );
     }
-} as Model;
+} as Model<PolygonNode>;

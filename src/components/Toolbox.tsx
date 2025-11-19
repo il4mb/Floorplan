@@ -1,10 +1,9 @@
 import { ToolButton } from "./ui/ToolButton";
-import { Eraser, Hand, Redo, SquareMousePointer, Undo, Waypoints } from "lucide-react";
+import { Eraser, Hand, Redo, SquareMousePointer, Undo } from "lucide-react";
 import { useFloorplanContext } from "./FloorplanProvider";
 import { Tool } from "@/types";
 
 const tools: { id: Tool, [key: string]: any }[] = [
-    { id: 'draw', label: "Draw", icon: <Waypoints size={16} /> },
     { id: "select", label: "Select", icon: <SquareMousePointer size={16} /> },
     { id: "pan", label: "Pan", icon: <Hand size={16} /> },
     { id: "erase", label: "Erase", icon: <Eraser size={16} /> },

@@ -1,12 +1,12 @@
 // src/components/SelectionBox.tsx
 import React, { useEffect } from 'react';
-import { Point, BoundingBox } from '../types';
+import { Vert, BoundingBox } from '../types';
 import { boundingBox, pointInBoundingBox } from '../utils/geometry';
 import { useFloorplanContext } from './FloorplanProvider';
 
 interface SelectionBoxProps {
-    start: Point;
-    end: Point;
+    start: Vert;
+    end: Vert;
     onSelect: (ids: string[]) => void;
 }
 

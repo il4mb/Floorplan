@@ -25,21 +25,22 @@ export type Actionbar = {
     icon: ReactNode;
     context: string;
     toggle?: boolean;
+    tooltip?: string;
 }
 
-export type Model = {
+export type NodeUpdateHandler = {
+    (key: string, value: any): void;
+    (data: Record<string, any>): void;
+};
+
+export type Model<T extends Node = Node> = {
+
     type: string;
     name: string;
     icon: FC<{ width: number; height: number; color: string; }>;
     actionbars?: Actionbar[];
-    render: FC<{ node: Node, selected: boolean; updateNode: (key: string, value: any) => void; }>;
+    render: FC<{ node: T, selected: boolean; updateNode: NodeUpdateHandler }>;
     properties?: Property[];
     onPropsChange?(this: NodeState): void;
-}
-export const createModel = (define: Model) => {
-    return () => {
-        return {
-            ...define
-        }
-    }
+
 }

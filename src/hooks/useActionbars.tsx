@@ -12,9 +12,9 @@ export type Callback = (event: Event) => void;
 export type Unsubscribe = (() => void) | undefined;
 export type ActionsContextState = {
     addActionListener(actionId: string, callback: Callback): Unsubscribe;
-    toggled: Actionbar | null;
+    toggledIds: string[];
+    toggledRecord: Record<string, String>;
     toggleById(itemId: string): void;
-    isToggled(itemId: string): boolean;
 }
 export type EventListener = {
     nodeId: string;
@@ -22,29 +22,24 @@ export type EventListener = {
 }
 export const ActionsContext = createContext<ActionsContextState | undefined>(undefined);
 
-export const useActions = () => {
+export const useActionbars = () => {
     const ctx = useContext(ActionsContext);
-    if (!ctx) throw new Error("useActions should call inside ActionsContext");
+    if (!ctx) throw new Error("useActionbars should call inside ActionsContext");
     return ctx;
 }
 
 export const useToggledAction = () => {
-    const { toggled } = useActions();
-    return toggled;
+    const { toggledIds } = useActionbars();
+    return toggledIds;
 }
 
 export const useToggleById = () => {
-    const { toggleById } = useActions();
+    const { toggleById } = useActionbars();
     return toggleById;
 }
 
-export const useIsToggled = (itemId: string) => {
-    const { isToggled } = useActions();
-    return isToggled(itemId);
-}
-
 export const useActionListener = (id: string | string[],callback: Callback,deps: any[] = []) => {
-    const { addActionListener } = useActions();
+    const { addActionListener } = useActionbars();
 
     useEffect(() => {
 

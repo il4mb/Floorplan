@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo } from 'react';
 import { FloorplanData, FloorplanState, FloorplanActions, Node } from '../types';
 import { HistoryManager } from '../utils/history';
 import { importFromJSON } from '../utils/exportImport';
+import { nanoid } from 'nanoid';
 
 export interface FloorplanAction {
     type: string;
@@ -52,7 +53,7 @@ export function floorplanReducer(state: FloorplanState, action: FloorplanAction)
         case 'ADD_NODE': {
             const newNode: Node = {
                 ...action.payload,
-                id: `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+                id: nanoid()
             };
 
             const newData = {
@@ -104,7 +105,6 @@ export function floorplanReducer(state: FloorplanState, action: FloorplanAction)
             const ids = action.payload;
             const newData = {
                 ...state.data,
-                // walls: state.data.walls.filter(wall => !ids.includes(wall.id)),
                 nodes: state.data.nodes.filter(node => !ids.includes(node.id)),
                 meta: {
                     ...state.data.meta,

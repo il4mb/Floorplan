@@ -1,7 +1,7 @@
 export type Rect = { width: number, height: number; x: number; y: number };
 
 
-export interface Point {
+export interface Vert {
     x: number;
     y: number;
 }
@@ -15,7 +15,7 @@ export interface BoundingBox {
 
 export interface Line {
     id: string;
-    points: Point[];
+    points: Vert[];
     thickness: number;
 }
 
@@ -33,7 +33,7 @@ export interface Node {
     x: number;
     y: number;
     rotation: number;
-    points: Point[];
+    points: Vert[];
     thickness?: number;
     label?: NodeLabel;
 }
@@ -57,7 +57,7 @@ export interface ViewState {
     zoom: number;
 }
 
-export type Tool = 'select' | 'pan' | 'measure' | 'erase' | 'draw';
+export type Tool = 'select' | 'pan' | 'measure' | 'erase';
 
 export interface FloorplanState {
     data: FloorplanData;

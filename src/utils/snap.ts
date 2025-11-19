@@ -1,9 +1,9 @@
 // src/utils/snap.ts
-import { Point } from '../types';
+import { Vert } from '../types';
 import { distance, midpoint, closestPointOnLine } from './geometry';
 
 export interface SnapResult {
-    point: Point;
+    point: Vert;
     type: 'grid' | 'endpoint' | 'midpoint' | 'intersection' | 'line';
     distance: number;
 }
@@ -11,8 +11,8 @@ export interface SnapResult {
 export class SnapEngine {
     
     private gridSize: number;
-    private points: Point[] = [];
-    private lines: { from: Point; to: Point }[] = [];
+    private points: Vert[] = [];
+    private lines: { from: Vert; to: Vert }[] = [];
     private adaptiveGridEnabled: boolean = true;
 
     constructor(gridSize: number = 10) {
@@ -27,11 +27,11 @@ export class SnapEngine {
         this.adaptiveGridEnabled = enabled;
     }
 
-    addPoint(point: Point): void {
+    addPoint(point: Vert): void {
         this.points.push(point);
     }
 
-    addLine(from: Point, to: Point): void {
+    addLine(from: Vert, to: Vert): void {
         this.lines.push({ from, to });
         // Add endpoints and midpoint
         this.points.push(from, to, midpoint(from, to));
@@ -42,19 +42,14 @@ export class SnapEngine {
         this.lines = [];
     }
 
-    snap(point: Point, threshold: number = 10, zoom: number = 1): SnapResult | null {
+    snap(point: Vert, threshold: number = 10, zoom: number = 1): SnapResult | null {
         const results: SnapResult[] = [];
 
         // Grid snapping with adaptive sizing
         const gridPoint = this.snapToGrid(point, zoom);
-
-        console.log(gridPoint)
         const gridDistance = distance(point, gridPoint);
-
-        // Use the same conditions as FixedGridCanvas
-        const shouldSnapToGrid = this.shouldSnapToGrid(zoom);
         
-        if (shouldSnapToGrid && gridDistance <= threshold) {
+        if (gridDistance <= threshold) {
             results.push({
                 point: gridPoint,
                 type: 'grid',
@@ -62,7 +57,6 @@ export class SnapEngine {
             });
         }
 
-        // Point snapping (endpoints, midpoints)
         for (const snapPoint of this.points) {
             const dist = distance(point, snapPoint);
             if (dist <= threshold) {
@@ -96,7 +90,7 @@ export class SnapEngine {
         );
     }
 
-    private snapToGrid(point: Point, zoom: number = 1): Point {
+    private snapToGrid(point: Vert, zoom: number = 1): Vert {
         if (!this.adaptiveGridEnabled) {
             return {
                 x: Math.round(point.x / this.gridSize) * this.gridSize,
@@ -140,7 +134,7 @@ export class SnapEngine {
         return minorGridVisible && majorGridVisible;
     }
 
-    private getPointType(point: Point): 'endpoint' | 'midpoint' {
+    private getPointType(point: Vert): 'endpoint' | 'midpoint' {
         // Simple heuristic: if the point is exactly midway between two endpoints, it's a midpoint
         for (const line of this.lines) {
             const mid = midpoint(line.from, line.to);
@@ -171,7 +165,7 @@ export class SnapEngine {
 }
 
 // Utility function for direct snapping without engine instance
-export function snapToGrid(point: Point, zoom: number = 1): Point {
+export function snapToGrid(point: Vert, zoom: number = 1): Vert {
     let gridSize: number;
 
     if (zoom < 0.5) {

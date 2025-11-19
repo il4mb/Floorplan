@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useFloorplanContext } from '../FloorplanProvider';
 import { useLayers } from '../LayersProvider';
 import NodeLabel from './NodeLabel';
@@ -25,9 +25,15 @@ export default function NodeRender() {
     }, [layers]);
 
 
-    const handleSetData = (nodeId: string) => (key: string, value: any) => {
-        actions.updateNode(nodeId, { [key]: value });
-    }
+    const handleSetData = useCallback((nodeId: string) => (keyOrData: string | Record<string, any>, value?: any) => {
+        if (typeof keyOrData === "object") {
+            // bulk update
+            actions.updateNode(nodeId, keyOrData);
+        } else {
+            // single field update
+            actions.updateNode(nodeId, { [keyOrData]: value });
+        }
+    }, [actions]);
 
     return (
         <>
@@ -42,18 +48,15 @@ export default function NodeRender() {
                         id={`layer-${layer.id}`}
                         style={{ opacity: locked ? 0.5 : 1 }}>
                         {nodes.map(node => {
-
                             const isSelected = state.selection.includes(node.id);
-                            const zoom = state.view.zoom;
-                            const outlineWidth = Math.max(0.1, Math.min(10, 5 / zoom));
 
                             return (
                                 <NodeContext.Provider value={{ node, setData: handleSetData(node.id) }}>
-                                    <g key={node.id} 
-                                    transform={`translate(${node.x}, ${node.y}) rotate(${node.rotation})`}
-                                    //style={{ outline: isSelected ? `${outlineWidth}px dashed orange` : 'none', }}
-                                    >
-                                        <ModelRender node={node} selected={isSelected} updateNode={handleSetData(node.id)} />
+                                    <g key={node.id}>
+                                        <ModelRender
+                                            node={node}
+                                            selected={isSelected}
+                                            updateNode={handleSetData(node.id)} />
                                         {node.label && (
                                             <NodeLabel label={node.label} anchor={{ x: node.x, y: node.y }} />
                                         )}

@@ -1,8 +1,8 @@
-import { NodeLabel as LabelType, Point } from '@/types';
+import { NodeLabel as LabelType, Vert } from '@/types';
 
 export interface NodeLabelProps {
     label?: LabelType;
-    anchor: Point;
+    anchor: Vert;
 }
 export default function NodeLabel({ label, anchor }: NodeLabelProps) {
     return (

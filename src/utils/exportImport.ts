@@ -1,5 +1,5 @@
 // src/utils/exportImport.ts
-import { FloorplanData, Point } from '../types';
+import { FloorplanData, Vert } from '../types';
 
 export function exportToJSON(data: FloorplanData): string {
   return JSON.stringify(data, null, 2);
@@ -47,7 +47,7 @@ export function exportToSVG(data: FloorplanData): string {
 }
 
 function calculateBounds(data: FloorplanData): { x: number; y: number; width: number; height: number } {
-  const allPoints: Point[] = [];
+  const allPoints: Vert[] = [];
 
   data.walls.forEach(wall => {
     allPoints.push(wall.from, wall.to);

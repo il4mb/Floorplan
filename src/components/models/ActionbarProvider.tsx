@@ -3,18 +3,19 @@ import { useSelectedNode } from '@/hooks/useFloorplan';
 import { useModelMap } from '@/hooks/useModels';
 import { Actionbar } from '@/utils/model';
 import { nanoid } from 'nanoid';
-import { Dispatch, ReactNode, SetStateAction, useCallback } from 'react';
+import { Dispatch, ReactNode, SetStateAction, useCallback, useMemo } from 'react';
 
 export interface ActionbarProviderProps {
     children?: ReactNode;
     setListeners: Dispatch<SetStateAction<Map<string, Map<string, Map<string, Callback>>>>>;
     activeToggles: Record<string, string>;
     setActiveToggles: Dispatch<SetStateAction<Record<string, string>>>;
-    toggled: Actionbar | null;
+    // toggled: Actionbar[];
     onEvent?: (evt: Event) => void
 }
-export default function ActionbarProvider({ children, setListeners, activeToggles, setActiveToggles, toggled, onEvent }: ActionbarProviderProps) {
+export default function ActionbarProvider({ children, setListeners, activeToggles, setActiveToggles, onEvent }: ActionbarProviderProps) {
 
+    const toggledIds = useMemo(() => Object.values(activeToggles), [activeToggles]);
     const modelMap = useModelMap();
     const selected = useSelectedNode();
 
@@ -26,7 +27,7 @@ export default function ActionbarProvider({ children, setListeners, activeToggle
     const toggleById = useCallback((itemId: string) => {
         const node = getOnlyOneNode();
         if (!node) return;
-        
+
         const model = modelMap.get(node?.type);
         if (!model?.actionbars) return;
 
@@ -86,20 +87,8 @@ export default function ActionbarProvider({ children, setListeners, activeToggle
         }
     }, [modelMap, activeToggles, getOnlyOneNode, onEvent]);
 
-    const isToggled = useCallback((itemId: string) => {
-        if (!selected?.[0]?.type) return false;
-        const model = modelMap.get(selected[0]?.type);
-        if (!model?.actionbars) return false;
-
-        const toolbar = model.actionbars.find(t => t.id === itemId);
-        if (!toolbar) return false;
-
-        const context = toolbar.context || 'default';
-        return activeToggles[context] === itemId;
-    }, [modelMap, activeToggles]);
-
     const addActionListener = useCallback((actionId: string, callback: (event: any) => void) => {
-        
+
         const node = getOnlyOneNode();
         if (!node) return;
         let listenerId = nanoid();
@@ -144,12 +133,7 @@ export default function ActionbarProvider({ children, setListeners, activeToggle
     }, [getOnlyOneNode]);
 
     return (
-        <ActionsContext.Provider value={{
-                addActionListener,
-                toggleById,
-                isToggled,
-                toggled
-            }}>
+        <ActionsContext.Provider value={{ addActionListener, toggleById, toggledIds, toggledRecord: activeToggles }}>
             {children}
         </ActionsContext.Provider>
     );

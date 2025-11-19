@@ -1,10 +1,12 @@
 import { useModel } from '@/hooks/useModels';
 import { Node } from '@/types';
+import { NodeUpdateHandler } from '@/utils/model';
 
 export interface ModelRenderProps {
     node: Node;
     selected: boolean;
-    updateNode: (key: string, value: any) => void;
+    updateNode: NodeUpdateHandler;
+  
 }
 export default function ModelRender({ node, selected, updateNode }: ModelRenderProps) {
 
@@ -17,7 +19,7 @@ export default function ModelRender({ node, selected, updateNode }: ModelRenderP
                 key={node.id}
                 node={node}
                 selected={selected}
-                updateNode={updateNode} />
+                updateNode={updateNode}/>
         </>
     );
 }

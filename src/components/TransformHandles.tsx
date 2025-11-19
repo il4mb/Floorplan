@@ -1,6 +1,6 @@
 // src/components/TransformHandles.tsx
 import React, { useState } from 'react';
-import { Point } from '../types';
+import { Vert } from '../types';
 import { useFloorplanContext } from './FloorplanProvider';
 import { rotatePoint } from '../utils/geometry';
 
@@ -19,14 +19,14 @@ const TransformHandles: React.FC<TransformHandlesProps> = ({
 }) => {
     const { state, actions } = useFloorplanContext();
     const [transformMode, setTransformMode] = useState<TransformMode>(null);
-    const [transformStart, setTransformStart] = useState<Point | null>(null);
+    const [transformStart, setTransformStart] = useState<Vert | null>(null);
     const [originalPositions, setOriginalPositions] = useState<Map<string, any>>(new Map());
 
     if (selectedItems.length === 0) return null;
 
     // Calculate bounding box for selected items
     const getSelectionBounds = () => {
-        const allPoints: Point[] = [];
+        const allPoints: Vert[] = [];
 
         selectedItems.forEach(id => {
             // const wall = state.data.walls.find(w => w.id === id);

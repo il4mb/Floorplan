@@ -1,23 +1,23 @@
 // src/utils/geometry.ts
-import { Point, BoundingBox } from '../types';
+import { Vert, BoundingBox } from '../types';
 
-export const distance = (a: Point, b: Point): number => {
+export const distance = (a: Vert, b: Vert): number => {
     return Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
 };
 
-export const midpoint = (a: Point, b: Point): Point => {
+export const midpoint = (a: Vert, b: Vert): Vert => {
     return {
         x: (a.x + b.x) / 2,
         y: (a.y + b.y) / 2
     };
 };
 
-export const angle = (a: Point, b: Point): number => {
+export const angle = (a: Vert, b: Vert): number => {
     return Math.atan2(b.y - a.y, b.x - a.x);
 };
 
 
-export function rotatePoint(point: Point, center: Point, angle: number) {
+export function rotatePoint(point: Vert, center: Vert, angle: number) {
 
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
@@ -31,7 +31,7 @@ export function rotatePoint(point: Point, center: Point, angle: number) {
     }
 }
 
-export const boundingBox = (points: Point[]): BoundingBox => {
+export const boundingBox = (points: Vert[]): BoundingBox => {
     const xs = points.map(p => p.x);
     const ys = points.map(p => p.y);
 
@@ -48,7 +48,7 @@ export const boundingBox = (points: Point[]): BoundingBox => {
     };
 };
 
-export const pointInBoundingBox = (point: Point, bbox: BoundingBox, tolerance: number = 0): boolean => {
+export const pointInBoundingBox = (point: Vert, bbox: BoundingBox, tolerance: number = 0): boolean => {
     return (
         point.x >= bbox.x - tolerance &&
         point.x <= bbox.x + bbox.width + tolerance &&
@@ -58,9 +58,9 @@ export const pointInBoundingBox = (point: Point, bbox: BoundingBox, tolerance: n
 };
 
 export const lineIntersection = (
-    a1: Point, a2: Point,
-    b1: Point, b2: Point
-): Point | null => {
+    a1: Vert, a2: Vert,
+    b1: Vert, b2: Vert
+): Vert | null => {
     const denominator = (a1.x - a2.x) * (b1.y - b2.y) - (a1.y - a2.y) * (b1.x - b2.x);
 
     if (denominator === 0) return null;
@@ -78,7 +78,7 @@ export const lineIntersection = (
     return null;
 };
 
-export const closestPointOnLine = (point: Point, lineStart: Point, lineEnd: Point): Point => {
+export const closestPointOnLine = (point: Vert, lineStart: Vert, lineEnd: Vert): Vert => {
     const A = point.x - lineStart.x;
     const B = point.y - lineStart.y;
     const C = lineEnd.x - lineStart.x;
@@ -108,7 +108,76 @@ export const closestPointOnLine = (point: Point, lineStart: Point, lineEnd: Poin
     return { x: xx, y: yy };
 };
 
-export function getCenterPoints(points: Point[]): Point {
+export function closestPointAndDistance(p: Vert, a: Vert, b: Vert) {
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const apx = p.x - a.x;
+    const apy = p.y - a.y;
+
+    const abLenSq = abx * abx + aby * aby;
+    let t = abLenSq === 0 ? 0 : (apx * abx + apy * aby) / abLenSq;
+
+    t = Math.max(0, Math.min(1, t));
+
+    const closestX = a.x + abx * t;
+    const closestY = a.y + aby * t;
+
+    const dist = Math.hypot(p.x - closestX, p.y - closestY);
+
+    return {
+        point: { x: closestX, y: closestY },
+        dist,
+        t // optional: posisi relatif di segmen
+    };
+}
+
+export function getClosestEdgeFromVerts(
+    p: Vert,
+    verts: Vert[],
+    threshold = 25
+) {
+    if (verts.length < 2) return null;
+
+    let best: null | {
+        index: number;        // index edge (i → i+1)
+        a: Vert;
+        b: Vert;
+        point: Vert;
+        dist: number;
+        t: number;
+    } = null;
+
+    let bestDist = threshold;
+
+    const n = verts.length;
+
+    for (let i = 0; i < n; i++) {
+        const a = verts[i]!;
+        const b = verts[(i + 1) % n]!; // wrap ke 0
+
+        const result = closestPointAndDistance(p, a, b);
+
+        if (result.dist <= bestDist) {
+            bestDist = result.dist;
+            best = {
+                index: i,
+                a,
+                b,
+                point: result.point,
+                dist: result.dist,
+                t: result.t
+            };
+        }
+    }
+
+    return best;
+}
+
+
+
+
+
+export function getCenterPoints(points: Vert[]): Vert {
     const total = points.length;
     const sum = points.reduce(
         (acc, p) => {
@@ -124,14 +193,14 @@ export function getCenterPoints(points: Point[]): Point {
     };
 }
 
-export function transformToLocal(points: Point[], center: Point) {
+export function transformToLocal(points: Vert[], center: Vert) {
     return points.map(p => ({
         x: p.x - center.x,
         y: p.y - center.y,
     }));
 }
 
-export function pointInPolygon(pt: Point, polygon: Point[]) {
+export function pointInPolygon(pt: Vert, polygon: Vert[]) {
     let inside = false;
 
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {

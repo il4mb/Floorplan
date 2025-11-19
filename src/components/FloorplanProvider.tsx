@@ -1,7 +1,7 @@
 // src/components/FloorplanProvider.tsx
 
 import React, { useContext, useReducer, useCallback, useEffect, useMemo } from 'react';
-import { FloorplanData, FloorplanState, FloorplanActions, Node, Tool, ViewState } from '../types';
+import { FloorplanData, FloorplanActions, Node, Tool, ViewState } from '../types';
 import { exportToJSON, importFromJSON, exportToSVG } from '../utils/exportImport';
 import { FloorplanContext, floorplanReducer, initialState } from '@/hooks/useFloorplan';
 import ModelProvider from './models/ModelProvider';
@@ -121,7 +121,6 @@ export const FloorplanProvider: React.FC<FloorplanProviderProps> = ({
             } else if (onChange) {
                 const newData = {
                     ...value,
-                    // walls: value.walls.filter(w => !ids.includes(w.id)),
                     nodes: value.nodes.filter(n => !ids.includes(n.id)),
                     meta: {
                         ...value.meta,
@@ -144,12 +143,6 @@ export const FloorplanProvider: React.FC<FloorplanProviderProps> = ({
                 type: 'SET_TOOL',
                 payload: tool
             });
-            if (tool == "draw") {
-                dispatch({
-                    type: "SELECT",
-                    payload: []
-                })
-            }
         }, []),
 
         updateView: useCallback((view: Partial<ViewState>) => {

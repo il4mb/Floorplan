@@ -1,14 +1,16 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo, MouseEvent } from 'react';
-import { Point, Rect } from '../types';
+import { Vert, Rect } from '../types';
 import { SnapEngine } from '../utils/snap';
 import { useFloorplanContext } from './FloorplanProvider';
-import GridCanvas from './GridCanvas';
+import GridCanvas, { GridPoint } from './GridCanvas';
 import NodeRender from './nodes/NodeRender';
 import { rotatePoint } from '../utils/geometry';
 import { useLayers } from './LayersProvider';
 import SpotsProvider from './SpotsProvider';
 import { PointerContext } from '@/hooks/usePointer';
 import { Callback, CanvasContext, EventListeners, EventName, Unsubscribe } from '@/hooks/useCanvas';
+
+const DOUBLE_CLICK_MS = 250;
 
 interface FloorplanCanvasProps {
     gridSize?: number;
@@ -20,17 +22,17 @@ interface FloorplanCanvasProps {
 const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap = true, className = '', background = 'rgb(10, 17, 19)' }) => {
 
     const { layers } = useLayers();
-    const [listeners, setListeners] = useState<EventListeners>(new Map());
-    // const [points, setPoints] = useState<Point[]>([]);
+    const [listeners,] = useState<EventListeners>(new Map());
     const [rect, setRect] = useState<Rect>({ width: 0, height: 0, x: 0, y: 0 });
     const containerRef = useRef<HTMLDivElement>(null);
     const { state, actions } = useFloorplanContext();
     const svgRef = useRef<SVGSVGElement>(null);
     const [isDragging, setIsDragging] = useState(false);
-    const [dragStart, setDragStart] = useState<Point | null>(null);
-    const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
-    const [selectionStart, setSelectionStart] = useState<Point | null>(null);
+    const [dragStart, setDragStart] = useState<Vert | null>(null);
+    const [currentPoint, setCurrentPoint] = useState<Vert | null>(null);
+    const [selectionStart, setSelectionStart] = useState<Vert | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
+    const gridPointsRef = useRef<GridPoint[]>([]);
     const snapEngine = useRef(new SnapEngine(gridSize));
     const viewBox = useMemo(() => `0 0 ${rect.width} ${rect.height}`, [rect]);
 
@@ -61,7 +63,7 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
 
 
     // Convert screen coordinates to world coordinates
-    const clientToWorldPoint = useCallback(({ x, y }: Point): Point => {
+    const clientToWorldPoint = useCallback(({ x, y }: Vert): Vert => {
         const svg = svgRef.current;
         if (!svg) return { x: 0, y: 0 };
 
@@ -77,24 +79,23 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
     }, [state.view.zoom, state.view.x, state.view.y]);
 
     // Convert world coordinates to screen coordinates
-    const worldToScreenPoint = useCallback(({ x, y }: Point): Point => {
+    const worldToScreenPoint = useCallback(({ x, y }: Vert): Vert => {
         const screenX = (x - state.view.x) * state.view.zoom;
         const screenY = (y - state.view.y) * state.view.zoom;
         return { x: screenX, y: screenY };
     }, [state.view.zoom, state.view.x, state.view.y]);
 
 
-    const snapPoint = useCallback((point: Point, threshold = 25) => {
+    const snapPoint = useCallback((point: Vert, threshold = 25) => {
         return snapEngine.current.snap(point, threshold, state.view.zoom)?.point || point;
     }, [state.view.zoom]);
 
 
     const handleContextMenu = (e: MouseEvent) => {
         e.preventDefault();
-        invokeListeners("contexmenu", e);
+        invokeListeners("contextmenu", e);
         actions.setTool("select");
     }
-
 
     const handleMouseDown = useCallback((e: MouseEvent) => {
 
@@ -292,6 +293,10 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
         }
     }, [containerRef]);
 
+    useEffect(() => {
+        snapEngine.current.enableAdaptiveGrid(true);
+    }, []);
+
     // Add center indicator for debugging
     const renderCenterIndicator = () => {
         const centerScreen = worldToScreenPoint({ x: 0, y: 0 });
@@ -324,6 +329,7 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
                         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, background }} />
 
                         <GridCanvas
+                            pointsRef={gridPointsRef}
                             width={rect.width}
                             height={rect.height}
                             zoom={state.view.zoom}
@@ -353,13 +359,6 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
                             <g transform={`translate(${-state.view.x * state.view.zoom}, ${-state.view.y * state.view.zoom}) scale(${state.view.zoom})`}>
 
                                 <NodeRender />
-
-                                {/* {state.tool == "draw" && (
-                                <NodeDrawer
-                                    points={points}
-                                    currentPoint={currentPoint || { x: 0, y: 0 }}
-                                    zoom={state.view.zoom} />
-                            )} */}
                             </g>
 
                             {/* Selection box in screen coordinates */}

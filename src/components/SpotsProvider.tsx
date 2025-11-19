@@ -1,8 +1,7 @@
 import { useSelectedNode } from '@/hooks/useFloorplan';
 import { Rect } from '@/types';
-import { ReactNode, useEffect, useState, useCallback, useRef } from 'react';
+import { ReactNode, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import ModelActionbar from './models/ModelActionbar';
-import { Actionbar } from '@/utils/model';
 import ActionbarProvider from './models/ActionbarProvider';
 import { Event, MapListener } from '@/hooks/useActionbars';
 import { waitForListener } from '@/utils/wait';
@@ -15,9 +14,9 @@ export interface Props {
 export default function SpotsProvider({ children }: Props) {
 
     const selected = useSelectedNode();
+    const stableSelected = useMemo(() => selected.map(e => e.id).join(","), [selected]);
     const [activeToggles, setActiveToggles] = useState<Record<string, string>>({});
     const [listeners, setListeners] = useState<MapListener>(new Map());
-    const [toggled, setToggled] = useState<Actionbar | null>(null);
     const listenerRef = useRef(listeners);
 
     // sync
@@ -27,11 +26,24 @@ export default function SpotsProvider({ children }: Props) {
 
     // event handler
     const handleEvent = useCallback(async (event: Event) => {
-        if (event.type === "toggled") setToggled(event.toolbar);
-        else if (event.type === "untoggled") setToggled(null);
+        if (event.type === "toggled") {
+            setActiveToggles(prev => {
+                return {
+                    ...prev,
+                    [event.toolbar.context || 'default']: event.toolbar.id
+                }
+            });
+        }
+        else if (event.type === "untoggled") {
+            setActiveToggles(prev => {
+                const toggledData = { ...prev };
+                delete toggledData[event.toolbar.context || 'default'];
+                return toggledData;
+            });
+        }
 
         try {
-            const listenersMap = await waitForListener(listenerRef, event.nodeId, event.toolbar.id, 2000);
+            const listenersMap = await waitForListener(listenerRef, event.nodeId, event.toolbar.id, 8000);
             // call each listener
             listenersMap.forEach((cb) => {
                 try { cb(event); }
@@ -47,16 +59,14 @@ export default function SpotsProvider({ children }: Props) {
     useEffect(() => {
         return () => {
             setActiveToggles({});
-            setToggled(null);
         };
-    }, [selected]);
+    }, [stableSelected]);
 
     return (
         <>
             <ActionbarProvider
                 activeToggles={activeToggles}
                 setActiveToggles={setActiveToggles}
-                toggled={toggled}
                 onEvent={handleEvent}
                 setListeners={setListeners}>
                 {children}

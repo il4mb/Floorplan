@@ -3,7 +3,6 @@ import { useModelsArray } from '@/hooks/useModels';
 import { createElement, useCallback, useMemo } from 'react';
 import { useLayers } from '../LayersProvider';
 
-
 export default function ModelGallery() {
 
     const { actions } = useFloorplan();
@@ -26,6 +25,7 @@ export default function ModelGallery() {
             points: []
         });
     }, [selectedLayerId, modelArray]);
+
 
     return (
         <div className='p-3'>
