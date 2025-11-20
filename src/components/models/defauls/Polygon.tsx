@@ -6,6 +6,7 @@ import { Node, Vert } from "@/types";
 import { useNodeGeometry } from "@/hooks/useNode";
 import PolylineDrawer from "./components/PolylineDrawer";
 import PolygonDrawer from "./components/PolygonDrawer";
+import { useStateActions } from "@/components/FloorplanProvider";
 
 
 export type PolygonNode = Node & {
@@ -53,6 +54,7 @@ export default {
 
     render({ node, selected, updateNode }) {
 
+        const actions = useStateActions();
         const [editing, setEditing] = useState(false);
         const { localToWorld } = useNodeGeometry();
         const rotatedWorldPoints = useMemo(() => {
@@ -78,7 +80,8 @@ export default {
         const points = useMemo(() => rotatedWorldPoints.map(e => [e.x, e.y].join(",")).join(" "), [rotatedWorldPoints]);
 
         const handleDoubleClick = useCallback(() => {
-            if(!selected) return;
+            if (!selected) return;
+            actions.select([node.id]);
             setEditing(true);
         }, [selected]);
         const handleMouseDown = useCallback((e: MouseEvent) => {
@@ -104,8 +107,8 @@ export default {
                             strokeLinecap="round"
                             strokeWidth={`${node.thickness || 10}px`}
                             stroke={selected ? '#e68200' : '#fff'}
-                            fill={node.points.length >= 3 ? "#3468eb88" : "none"}
-                            opacity={0.8} />
+                            fill={"#0000"}
+                            opacity={selected ? 0.8 : 1} />
                         {editing && (
                             <PolygonDrawer
                                 selected={selected}
@@ -124,7 +127,7 @@ export default {
                             strokeWidth={`${node.thickness || 10}px`}
                             stroke={selected ? '#e68200' : '#fff'}
                             fill={node.points.length >= 3 ? "#3468eb88" : "none"}
-                            opacity={0.8}
+                            opacity={selected ? 0.8 : 1}
                         />
                         {editing && (
                             <PolylineDrawer

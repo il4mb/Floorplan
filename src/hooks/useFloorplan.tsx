@@ -1,8 +1,9 @@
-import { createContext, useContext, useMemo } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import { FloorplanData, FloorplanState, FloorplanActions, Node } from '../types';
 import { HistoryManager } from '../utils/history';
 import { importFromJSON } from '../utils/exportImport';
 import { nanoid } from 'nanoid';
+import { Model } from '@/utils/model';
 
 export interface FloorplanAction {
     type: string;
@@ -17,7 +18,8 @@ export const initialData: FloorplanData = {
     },
     units: 'meters',
     gridSize: 0.1,
-    nodes: []
+    nodes: [],
+    layers: []
 };
 
 export const initialState: FloorplanState = {

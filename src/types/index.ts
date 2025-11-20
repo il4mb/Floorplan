@@ -1,3 +1,5 @@
+import { Model } from "@/utils/model";
+
 export type Rect = { width: number, height: number; x: number; y: number };
 
 
@@ -38,8 +40,6 @@ export interface Node {
     label?: NodeLabel;
 }
 
-// export type Node<T = Record<string, any>> = NodeBase & { data: T };
-
 export interface FloorplanData {
     meta: {
         version: string;
@@ -49,6 +49,7 @@ export interface FloorplanData {
     units: 'meters' | 'feet' | 'pixels';
     gridSize: number;
     nodes: Node[];
+    layers: Layer[];
 }
 
 export interface ViewState {

@@ -1,11 +1,13 @@
 // src/components/FloorplanProvider.tsx
 
-import React, { useContext, useReducer, useCallback, useEffect, useMemo } from 'react';
-import { FloorplanData, FloorplanActions, Node, Tool, ViewState } from '../types';
+import React, { useContext, useReducer, useCallback, useEffect, useMemo, useState } from 'react';
+import { FloorplanData, FloorplanActions, Node, Tool, ViewState, Layer } from '../types';
 import { exportToJSON, importFromJSON, exportToSVG } from '../utils/exportImport';
 import { FloorplanContext, floorplanReducer, initialState } from '@/hooks/useFloorplan';
 import ModelProvider from './models/ModelProvider';
 import { nanoid } from 'nanoid';
+import LayersProvider from './LayersProvider';
+import { Model } from '@/utils/model';
 
 interface FloorplanProviderProps {
     children: React.ReactNode;
@@ -31,7 +33,7 @@ export const FloorplanProvider: React.FC<FloorplanProviderProps> = ({
     // Use controlled data if provided, otherwise use reducer state
     const [internalState, dispatch] = useReducer(floorplanReducer, {
         ...initialState,
-        data: value || initialData || initialState.data
+        data: value || initialData || initialState.data,
     });
 
     // If controlled mode (value prop provided), use that data, otherwise use internal state
@@ -66,9 +68,8 @@ export const FloorplanProvider: React.FC<FloorplanProviderProps> = ({
     }, [state.view, onViewChange]);
 
     const actions: FloorplanActions = {
-
         addNode: useCallback((node: Omit<Node, 'id'>) => {
-            const id = nanoid()
+            const id = nanoid();
             if (!value) {
                 dispatch({
                     type: 'ADD_NODE',
@@ -185,13 +186,36 @@ export const FloorplanProvider: React.FC<FloorplanProviderProps> = ({
         exportSVG: useCallback(() => {
             return exportToSVG(state.data);
         }, [state.data]),
-
+       
     };
+
+
+    const [layers, setLayers] = useState<Layer[]>(() => {
+        return state.data.layers || [{
+            id: '1',
+            name: "Layer 1",
+            order: 0,
+            visible: true,
+            locked: false
+        }] as Layer[];
+    });
+
+
+    useEffect(() => {
+        if (value && onChange) {
+            onChange({
+                ...value,
+                layers
+            })
+        }
+    }, [layers]);
 
     return (
         <FloorplanContext.Provider value={{ state, actions }}>
             <ModelProvider>
-                {children}
+                <LayersProvider layers={layers} onChange={setLayers}>
+                    {children}
+                </LayersProvider>
             </ModelProvider>
         </FloorplanContext.Provider>
     );
@@ -208,4 +232,8 @@ export const useFloorplanContext = () => {
 export const useStateData = () => {
     const { state } = useFloorplanContext();
     return useMemo(() => state.data, [state.data]);
+}
+export const useStateActions = () => {
+    const { actions } = useFloorplanContext();
+    return useMemo(() => actions, [actions]);
 }

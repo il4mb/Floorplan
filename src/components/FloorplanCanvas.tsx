@@ -9,6 +9,8 @@ import { useLayers } from './LayersProvider';
 import SpotsProvider from './SpotsProvider';
 import { PointerContext } from '@/hooks/usePointer';
 import { Callback, CanvasContext, EventListeners, EventName, Unsubscribe } from '@/hooks/useCanvas';
+import DraggingPreview from './models/DraggingPreview';
+import Door from './models/defauls/Door';
 
 const DOUBLE_CLICK_MS = 250;
 
@@ -359,6 +361,8 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
                             <g transform={`translate(${-state.view.x * state.view.zoom}, ${-state.view.y * state.view.zoom}) scale(${state.view.zoom})`}>
 
                                 <NodeRender />
+                                <Door />
+
                             </g>
 
                             {/* Selection box in screen coordinates */}
@@ -379,7 +383,10 @@ const FloorplanCanvas: React.FC<FloorplanCanvasProps> = ({ gridSize = 10, snap =
                             <text x="10" y="50" fill="#10b981" fontSize="12" fontFamily="monospace">
                                 Center: (0,0) is at center of canvas
                             </text>
+
                         </svg>
+
+                        <DraggingPreview />
                     </div>
                 </CanvasContext.Provider>
             </SpotsProvider>

@@ -7,6 +7,7 @@ import { useNodeGeometry } from '@/hooks/useNode';
 import { distance, getCenterPoints } from '@/utils/geometry';
 import { Vert } from '@/types';
 import PolyPoints from './PolyPoints';
+import { useStateActions } from '@/components/FloorplanProvider';
 
 export interface PolylineDrawerProps {
     selected: boolean;
@@ -20,6 +21,7 @@ const SNAP_DISTANCE = 15;
 
 export default function PolylineDrawer({ selected, node, updateNode }: PolylineDrawerProps) {
 
+    const actions = useStateActions();
     const { clientToWorldPoint, snapPoint } = useCanvas();
     const { localToWorld, worldToLocal } = useNodeGeometry();
     const pointer = usePointer();
@@ -168,6 +170,14 @@ export default function PolylineDrawer({ selected, node, updateNode }: PolylineD
         setShouldJoin(distance(pointer, startPoint) < JOIN_THRESHOLD);
     }, [pointer, startPoint, node.points.length]);
 
+    useEffect(() => {
+        if (selected && node.points.length === 0) {
+            updateNode("points", [{ x: 0, y: 0 }]);
+        } else if (!selected && node.points.length == 1) {
+            actions.removeItems([node.id]);
+        }
+    }, [node.points, selected]);
+
     // Render methods
     const renderConnectionLine = () => {
         if (!pointer || hoveredPoint || !endPoint) return null;
@@ -247,10 +257,11 @@ export default function PolylineDrawer({ selected, node, updateNode }: PolylineD
         );
     };
 
+
     return (
         <>
             {renderConnectionLine()}
-            <PolyPoints points={node.points.map(localToWorld)}/>
+            <PolyPoints points={node.points.map(localToWorld)} />
             {renderPointer()}
             {renderJoinIndicator()}
             {renderHoverIndicator()}

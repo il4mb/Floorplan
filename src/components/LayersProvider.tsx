@@ -1,8 +1,8 @@
 // src/components/Layers.tsx
 import { Layer } from '@/types';
-import { v4 as uuidv4 } from 'uuid';
-import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Dispatch, ReactNode, SetStateAction, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useStateData } from './FloorplanProvider';
+import { debounce } from 'lodash';
 
 export interface LayerContextType {
     // Layer management
@@ -28,21 +28,15 @@ const LayerContext = createContext<LayerContextType | null>(null);
 
 export interface LayersProps {
     children?: ReactNode;
+    layers: Layer[];
+    onChange: Dispatch<SetStateAction<Layer[]>>
 }
 
-export default function LayersProvider({ children }: LayersProps) {
+export default function LayersProvider({ children, layers, onChange }: LayersProps) {
 
+    const [mounted, setMounted] = useState(false);
     const data = useStateData();
     const [selected, setSelected] = useState<string[]>([]);
-    const [layers, setLayers] = useState<Layer[]>(() => {
-        return [{
-            id: '1',
-            name: "Layer 1",
-            order: 0,
-            visible: true,
-            locked: false
-        }] as Layer[];
-    });
 
     const nextId = useMemo(() => {
         let max = -Infinity;
@@ -60,7 +54,7 @@ export default function LayersProvider({ children }: LayersProps) {
 
     const createLayer = useCallback((partial: Partial<Omit<Layer, 'id'>>): string => {
         const id = String((nextId || layers.length) + 1);
-        setLayers(prev => {
+        onChange(prev => {
             const newLayer: Layer = {
                 id,
                 name: `Layer ${prev.length + 1}`,
@@ -75,7 +69,7 @@ export default function LayersProvider({ children }: LayersProps) {
     }, [layers])
 
     const updateLayer = (id: string, updates: Partial<Layer>) => {
-        setLayers(prev =>
+        onChange(prev =>
             prev.map(layer =>
                 layer.id === id ? { ...layer, ...updates } : layer
             )
@@ -83,7 +77,7 @@ export default function LayersProvider({ children }: LayersProps) {
     };
 
     const removeLayer = (id: string) => {
-        setLayers(prev => {
+        onChange(prev => {
             const filtered = prev.filter(layer => layer.id !== id);
             // Reorder remaining layers
             return filtered.map((layer, index) => ({
@@ -94,7 +88,7 @@ export default function LayersProvider({ children }: LayersProps) {
     };
 
     const moveLayer = (id: string, newOrder: number) => {
-        setLayers(prev => {
+        onChange(prev => {
             const sorted = [...prev].sort((a, b) => a.order - b.order);
             const currentIndex = sorted.findIndex(layer => layer.id === id);
 
@@ -114,7 +108,7 @@ export default function LayersProvider({ children }: LayersProps) {
     };
 
     const toggleLayerVisibility = (id: string) => {
-        setLayers(prev =>
+        onChange(prev =>
             prev.map(layer =>
                 layer.id === id ? { ...layer, visible: !layer.visible } : layer
             )
@@ -122,7 +116,7 @@ export default function LayersProvider({ children }: LayersProps) {
     };
 
     const toggleLayerLock = (id: string) => {
-        setLayers(prev =>
+        onChange(prev =>
             prev.map(layer =>
                 layer.id === id ? { ...layer, locked: !layer.locked } : layer
             )
@@ -135,15 +129,15 @@ export default function LayersProvider({ children }: LayersProps) {
     };
 
     const showAllLayers = () => {
-        setLayers(prev => prev.map(layer => ({ ...layer, visible: true })));
+        onChange(prev => prev.map(layer => ({ ...layer, visible: true })));
     };
 
     const hideAllLayers = () => {
-        setLayers(prev => prev.map(layer => ({ ...layer, visible: false })));
+        onChange(prev => prev.map(layer => ({ ...layer, visible: false })));
     };
 
     const unlockAllLayers = () => {
-        setLayers(prev => prev.map(layer => ({ ...layer, locked: false })));
+        onChange(prev => prev.map(layer => ({ ...layer, locked: false })));
     };
 
     const selectLayers = (ids: string[]) => {
@@ -157,6 +151,8 @@ export default function LayersProvider({ children }: LayersProps) {
     }, [layers, selected]);
 
     useEffect(() => {
+
+        if (!mounted) return;
         const nodesLayerIds = data.nodes
             .map(n => n.layerId)
             .filter(Boolean) as string[];
@@ -165,11 +161,10 @@ export default function LayersProvider({ children }: LayersProps) {
 
         const uniqueIds = [...new Set(nodesLayerIds)];
 
-        setLayers(prev => {
+        onChange(prev => {
             const missing = uniqueIds.filter(
                 layerId => !prev.some(layer => layer.id === layerId)
             );
-
             if (missing.length === 0) return prev;
 
             const newLayers = missing.map((layerId, index) => ({
@@ -182,7 +177,21 @@ export default function LayersProvider({ children }: LayersProps) {
 
             return [...prev, ...newLayers];
         });
-    }, [data.nodes]);
+    }, [data.nodes, mounted]);
+
+    const handleMounted = debounce(() => {
+        setMounted(true);
+    }, 200);
+
+    useEffect(() => {
+        if (mounted) return;
+
+        handleMounted();
+
+        return () => {
+            handleMounted.cancel();
+        }
+    }, [layers, mounted]);
 
     const contextValue: LayerContextType = useMemo(() => ({
         layers: layers.sort((a, b) => a.order - b.order),
@@ -215,3 +224,12 @@ export const useLayers = () => {
     }
     return context;
 };
+
+
+export const useSelectedLayerId = () => {
+    const { selected, layers } = useLayers();
+    return useMemo(() =>
+        selected?.[0] ||
+        layers.sort((a, b) => b.order - a.order)[0]?.id,
+        [layers, selected]);
+}

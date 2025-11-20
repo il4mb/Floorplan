@@ -1,30 +1,17 @@
-import { useFloorplan } from '@/hooks/useFloorplan';
-import { useModelsArray } from '@/hooks/useModels';
-import { createElement, useCallback, useMemo } from 'react';
-import { useLayers } from '../LayersProvider';
+import { useModelsArray, useSetDragging } from '@/hooks/useModels';
+import { createElement, useCallback } from 'react';
 
 export default function ModelGallery() {
 
-    const { actions } = useFloorplan();
+    const setDragging = useSetDragging();
     const modelArray = useModelsArray();
-    const { selected, layers } = useLayers();
-    const selectedLayerId = useMemo(() =>
-        selected?.[0] ||
-        layers.sort((a, b) => b.order - a.order)[0]?.id,
-        [layers, selected]);
+
 
     const onClick = (type: string) => useCallback(() => {
         const model = modelArray.find(m => m.type == type);
-        if (!model || !selectedLayerId) return;
-        actions.addNode({
-            type: model.type,
-            layerId: selectedLayerId,
-            x: 0,
-            y: 0,
-            rotation: 0,
-            points: []
-        });
-    }, [selectedLayerId, modelArray]);
+        if (!model) return;
+        setDragging(model);
+    }, [modelArray]);
 
 
     return (

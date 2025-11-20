@@ -42,21 +42,30 @@ export default function NodeRender() {
                 const nodes = nodesByLayer[layer.id];
                 if (!nodes) return null;
 
+                // ⬇️ sort di dalam setiap layer
+                const sortedNodes = nodes.slice().sort((a, b) => {
+                    const aSel = state.selection.includes(a.id);
+                    const bSel = state.selection.includes(b.id);
+                    return Number(aSel) - Number(bSel);
+                });
+
                 return (
                     <g
                         key={`layer-${layer.id}-${layer.order}`}
                         id={`layer-${layer.id}`}
                         style={{ opacity: locked ? 0.5 : 1 }}>
-                        {nodes.map(node => {
+
+                        {sortedNodes.map(node => {
                             const isSelected = state.selection.includes(node.id);
 
                             return (
-                                <NodeContext.Provider value={{ node, setData: handleSetData(node.id) }}>
-                                    <g key={node.id}>
+                                <NodeContext.Provider key={node.id} value={{ node, setData: handleSetData(node.id) }}>
+                                    <g>
                                         <ModelRender
                                             node={node}
                                             selected={isSelected}
-                                            updateNode={handleSetData(node.id)} />
+                                            updateNode={handleSetData(node.id)}
+                                        />
                                         {node.label && (
                                             <NodeLabel label={node.label} anchor={{ x: node.x, y: node.y }} />
                                         )}
@@ -64,9 +73,11 @@ export default function NodeRender() {
                                 </NodeContext.Provider>
                             );
                         })}
+
                     </g>
                 );
             })}
+
         </>
     );
 }

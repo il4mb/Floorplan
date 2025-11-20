@@ -42,6 +42,15 @@ const samplePlan: FloorplanData = {
             thickness: 10
         }
     ],
+    layers: [
+        {
+            id: '1',
+            name: "Layer 1",
+            visible: true,
+            locked: false,
+            order: 0
+        }
+    ]
 };
 
 const STORAGE_KEY = 'floorplan-editor-data';
@@ -75,41 +84,42 @@ export default function FloorplanEditor() {
         }
     }, [floorplanData, hasLoaded]);
 
+
+    if(!hasLoaded) return;
+
     return (
         <FloorplanProvider
             value={floorplanData}
             onChange={setFloorplanData}>
-            <LayersProvider>
-                <div className="flex flex-col h-screen bg-neutral-600 text-white text-[0.8rem]">
-                    {/* Simple status indicator */}
-                    <div className="p-1 bg-neutral-700 text-xs text-center">
-                        {hasLoaded ? 'Auto-save enabled' : 'Loading...'}
-                    </div>
-
-                    {/* Rest of your JSX remains the same */}
-                    <div className="flex flex-row flex-1 overflow-hidden">
-                        <div className='basis-[140px] flex flex-col items-start justify-start'>
-                            <ModelGallery />
-                        </div>
-                        <main className="flex-1 relative">
-                            <FloorplanCanvas
-                                gridSize={0.1}
-                                className="absolute inset-0"
-                                background='transparent'
-                            />
-                            <Toolbox />
-                            {/* <NodeToolbox /> */}
-                        </main>
-                        <aside className='basis-[250px] flex flex-col'>
-                            <div className='basis-100'>
-                                <Inspector />
-                            </div>
-                            <LayerList />
-                        </aside>
-                    </div>
-                    <ToolbarShortcuts />
+            <div className="flex flex-col h-screen bg-neutral-600 text-white text-[0.8rem]">
+                {/* Simple status indicator */}
+                <div className="p-1 bg-neutral-700 text-xs text-center">
+                    {hasLoaded ? 'Auto-save enabled' : 'Loading...'}
                 </div>
-            </LayersProvider>
+
+                {/* Rest of your JSX remains the same */}
+                <div className="flex flex-row flex-1 overflow-hidden">
+                    <div className='basis-[140px] flex flex-col items-start justify-start'>
+                        <ModelGallery />
+                    </div>
+                    <main className="flex-1 relative">
+                        <FloorplanCanvas
+                            gridSize={0.1}
+                            className="absolute inset-0"
+                            background='transparent'
+                        />
+                        <Toolbox />
+                        {/* <NodeToolbox /> */}
+                    </main>
+                    <aside className='basis-[250px] flex flex-col'>
+                        <div className='basis-100'>
+                            <Inspector />
+                        </div>
+                        <LayerList />
+                    </aside>
+                </div>
+                <ToolbarShortcuts />
+            </div>
         </FloorplanProvider>
     );
 }
