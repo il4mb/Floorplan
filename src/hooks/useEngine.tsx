@@ -6,6 +6,10 @@ export type EngineState = Engine & {
     setUnit: Dispatch<SetStateAction<Engine['unit']>>;
     setMode: Dispatch<SetStateAction<Engine['mode']>>;
     scalePixel: (pixel: number, min?: number, max?: number) => number;
+    // Global UI interaction flag (e.g. dragging). Used to pause expensive
+    // computations like room detection during active manipulation.
+    isInteracting: boolean;
+    setIsInteracting: Dispatch<SetStateAction<boolean>>;
 }
 
 export const EngineContext = createContext<EngineState | undefined>(undefined);

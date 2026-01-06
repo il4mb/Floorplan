@@ -17,7 +17,7 @@ export interface canvasProps {
 }
 export default function Canvas({ }: canvasProps) {
 
-    const { gridSize, view, mode, updateView, scalePixel } = useEngine();
+    const { gridSize, view, mode, updateView, scalePixel, setIsInteracting } = useEngine();
     const { addNode, data } = useEditor();
 
     const listeners = useRef<EventListeners>(new Map());
@@ -86,6 +86,7 @@ export default function Canvas({ }: canvasProps) {
         invokeListeners("contextmenu", e);
         setDragPivot(undefined);
         setIsDragging(false);
+        setIsInteracting(false);
     }
 
     const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -96,8 +97,9 @@ export default function Canvas({ }: canvasProps) {
             setIsDragging(true);
             setDragPivot({ x: e.clientX, y: e.clientY });
             e.currentTarget.style.cursor = 'grabbing';
+            setIsInteracting(true);
         }
-    }, [mode, invokeListeners]);
+    }, [mode, invokeListeners, setIsInteracting]);
 
 
     const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -129,16 +131,18 @@ export default function Canvas({ }: canvasProps) {
         setIsDragging(false);
         setDragPivot(undefined);
         invokeListeners("mouseup", e);
+        setIsInteracting(false);
         e.currentTarget.style.cursor = mode === 'pan' ? 'grab' : 'default';
-    }, [mode, invokeListeners]);
+    }, [mode, invokeListeners, setIsInteracting]);
 
     const handleMouseLeave = useCallback((e: MouseEvent) => {
         setPointer(undefined);
         setIsDragging(false);
         setDragPivot(undefined);
         invokeListeners("mouseleave", e);
+        setIsInteracting(false);
         if (e.isDefaultPrevented()) return;
-    }, [clientToWorldPoint, invokeListeners]);
+    }, [clientToWorldPoint, invokeListeners, setIsInteracting]);
 
     const handleMouseEnter = useCallback((e: MouseEvent) => {
         invokeListeners("mouseenter", e);

@@ -8,9 +8,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Pencil, Ruler, MousePointer2 } from 'lucide-react';
 import Vec2 from '@/utils/vec2d';
+import { formatLength } from '@/utils/units';
 
 export default function WallDrawer() {
-    const { scalePixel, setMode } = useEngine();
+    const { scalePixel, setMode, unit } = useEngine();
     const { snap, snapWall } = useSnap();
     const { clientToWorldPoint } = useCanvas();
     const { addWall, data } = useEditor();
@@ -196,7 +197,7 @@ export default function WallDrawer() {
                         {isDrawing ? (
                             <>
                                 <Ruler size={14} />
-                                {wallLength.toFixed(0)}mm
+                                {formatLength(wallLength, unit)}
                             </>
                         ) : (
                             <>
@@ -360,7 +361,7 @@ export default function WallDrawer() {
                                             userSelect: 'none'
                                         }}
                                     >
-                                        {wallLength.toFixed(0)} mm
+                                        {formatLength(wallLength, unit)}
                                     </motion.text>
                                 )}
                             </>

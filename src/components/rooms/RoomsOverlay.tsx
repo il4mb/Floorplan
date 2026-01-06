@@ -2,7 +2,8 @@ import { useEditor } from "@/hooks/useEditor";
 import { useEngine } from "@/hooks/useEngine";
 import { detectRoomsFromWalls } from "@/utils/rooms";
 import Poly2 from "@/utils/polygon2d";
-import { useMemo } from "react";
+import { formatArea } from "@/utils/units";
+import { useMemo, useRef } from "react";
 
 function polygonCentroid(poly: { x: number; y: number }[]) {
     // Area-weighted centroid (works for simple polygons). Fallback to average if degenerate.
@@ -30,14 +31,19 @@ function polygonCentroid(poly: { x: number; y: number }[]) {
 
 export default function RoomsOverlay() {
     const { data } = useEditor();
-    const { unit, scalePixel } = useEngine();
+    const { unit, scalePixel, isInteracting } = useEngine();
+
+    const lastRoomsRef = useRef<ReturnType<typeof detectRoomsFromWalls>>([]);
 
     const rooms = useMemo(() => {
-        return detectRoomsFromWalls(data.walls, {
+        if (isInteracting) return lastRoomsRef.current;
+        const computed = detectRoomsFromWalls(data.walls, {
             epsilon: 1e-3,
             minArea: 2500,
         });
-    }, [data.walls]);
+        lastRoomsRef.current = computed;
+        return computed;
+    }, [data.walls, isInteracting]);
 
     const metaByKey = useMemo(() => {
         const entries = data.roomsMeta ?? [];
@@ -57,7 +63,7 @@ export default function RoomsOverlay() {
                 const subFontSize = scalePixel(12, 9, 18);
                 const strokeW = scalePixel(4, 2, 10);
 
-                const areaText = `${Math.round(room.area)} ${unit}²`;
+                const areaText = formatArea(room.area, unit);
 
                 return (
                     <g key={room.key}>

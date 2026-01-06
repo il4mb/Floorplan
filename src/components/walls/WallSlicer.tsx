@@ -9,6 +9,8 @@ import Vec2 from '@/utils/vec2d';
 import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Scissors, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useEngine } from '@/hooks/useEngine';
+import { formatLength } from '@/utils/units';
 
 type Nearest = {
     wall?: Wall;
@@ -24,6 +26,7 @@ export default function WallSlicer({ walls }: WallSlicerProps) {
     const { splitWall } = useEditor();
     const clearWalls = useClearShortWalls();
     const pointer = usePointer();
+    const { unit } = useEngine();
     
     const nearestWalls = useMemo(() => 
         pointer && walls.filter(wall => Line2.getDistanceToSegment(pointer, wall.points) < 10), 
@@ -140,7 +143,7 @@ export default function WallSlicer({ walls }: WallSlicerProps) {
                         {canSlice ? (
                             <>
                                 <CheckCircle2 size={14} />
-                                {wallThickness.toFixed(0)}mm
+                                {formatLength(wallThickness, unit)}
                             </>
                         ) : (
                             <>

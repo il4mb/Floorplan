@@ -15,6 +15,7 @@ export default function EngineProvider({ children }: EngineProviderProps) {
     const [unit, setUnit] = useState<Engine['unit']>('meters');
     const [gridPoints, setGridPoints] = useState<GridPoint[]>([]);
     const [gridDisabled, setGridDisabled] = useState(false);
+    const [isInteracting, setIsInteracting] = useState(false);
 
     const updateView = useCallback((patch: Partial<Engine['view']>) => {
         setView(prev => ({ ...prev, ...patch }));
@@ -34,8 +35,10 @@ export default function EngineProvider({ children }: EngineProviderProps) {
         setGridSize,
         setUnit,
         setMode,
-        scalePixel
-    }), [view, gridSize, unit, mode, updateView, scalePixel]);
+        scalePixel,
+        isInteracting,
+        setIsInteracting,
+    }), [view, gridSize, unit, mode, updateView, scalePixel, isInteracting]);
 
     const gridValue = useMemo<GridState>(() => ({
         points: gridPoints,

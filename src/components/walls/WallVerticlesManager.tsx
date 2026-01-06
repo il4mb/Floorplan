@@ -3,7 +3,6 @@ import { useEditor } from '@/hooks/useEditor';
 import { useEngine } from '@/hooks/useEngine';
 import { useCreatePortal } from '@/hooks/usePortal';
 import { useSnap } from '@/hooks/useSnap';
-import { useClearShortWalls } from '@/hooks/useWallEngine';
 import { Point, Wall } from '@/types';
 import { LineSegment } from '@/utils/line2d';
 import Poly2 from '@/utils/polygon2d';
@@ -23,11 +22,10 @@ export interface Props {
 }
 
 export default function WallVerticesManager({ walls }: Props) {
-    const { updateWall, normalizeWalls } = useEditor();
+    const { updateWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
-    const { scalePixel } = useEngine();
+    const { scalePixel, setIsInteracting } = useEngine();
     const { snap } = useSnap();
-    const cleanWalls = useClearShortWalls();
     const [moving, setMoving] = useState<Moving[]>([]);
     const [hoveredIndex, setHoveredIndex] = useState(-1);
     const [movingIndex, setMovingIndex] = useState(-1);
@@ -136,15 +134,19 @@ export default function WallVerticesManager({ walls }: Props) {
 
     const handleMoveWalls = useCallback((point: Point) => {
         const snapped = snap(point);
-        moving.forEach((move) => {
+        const ids: string[] = [];
+        const patches: Array<Partial<import('@/types').Wall>> = [];
+        for (const move of moving) {
             const wall = walls.find(w => w.id == move.wallId);
-            if (!wall) return;
+            if (!wall) continue;
             const wallLineSeg = wall.points;
             const index = move.wallPointIndex;
-            const points = wallLineSeg.map((x, i) => i == index ? snapped : x) as LineSegment;
-            updateWall(wall.id, { points });
-        });
-    }, [snap, moving, walls, updateWall]);
+            const nextPoints = wallLineSeg.map((x, i) => i == index ? snapped : x) as LineSegment;
+            ids.push(wall.id);
+            patches.push({ points: nextPoints });
+        }
+        if (ids.length > 0) updateWalls(ids, patches);
+    }, [snap, moving, walls, updateWalls]);
 
     useMouseDown((e) => {
         if (e.isDefaultPrevented()) return;
@@ -160,17 +162,53 @@ export default function WallVerticesManager({ walls }: Props) {
             }));
             setMoving(moving);
             setMovingIndex(nearest.index);
+            setIsInteracting(true);
         }
     }, [points, CLICK_THRESHOLD, clientToWorldPoint, walls]);
 
     useMouseUp(() => {
         if (!isMoving) return;
-        cleanWalls();
+
+        // Auto-join: if the dragged vertex ends near another existing vertex (not
+        // part of the moved set), snap to it.
+        const draggedPoint = movingIndex > -1 ? points[movingIndex] : undefined;
+        if (draggedPoint && moving.length > 0) {
+            const firstWall = walls.find(w => w.id === moving[0]!.wallId);
+            const tol = Math.max(0.5, (firstWall?.thickness ?? 1) * 0.5);
+            const movingWallIds = new Set(moving.map(m => m.wallId));
+
+            let best: Point | null = null;
+            let bestDist = Infinity;
+            for (const w of walls) {
+                if (movingWallIds.has(w.id)) continue;
+                for (const end of w.points) {
+                    const d = Vec2.dist(draggedPoint, end);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        best = end;
+                    }
+                }
+            }
+
+            if (best && bestDist <= tol) {
+                const ids: string[] = [];
+                const patches: Array<Partial<import('@/types').Wall>> = [];
+                for (const m of moving) {
+                    const w = walls.find(x => x.id === m.wallId);
+                    if (!w) continue;
+                    const nextPoints = w.points.map((p, i) => (i === m.wallPointIndex ? best! : p)) as LineSegment;
+                    ids.push(w.id);
+                    patches.push({ points: nextPoints });
+                }
+                if (ids.length > 0) updateWalls(ids, patches);
+            }
+        }
+
         setMoving([]);
         setMovingIndex(-1);
         setHoveredIndex(-1);
-        normalizeWalls();
-    }, [cleanWalls, isMoving, normalizeWalls]);
+        setIsInteracting(false);
+    }, [isMoving, setIsInteracting, movingIndex, points, moving, walls, updateWalls]);
 
     useMouseMove((e) => {
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });

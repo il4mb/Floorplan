@@ -1,18 +1,24 @@
 import { useEditor } from "@/hooks/useEditor";
 import { useEngine } from "@/hooks/useEngine";
 import { detectRoomsFromWalls } from "@/utils/rooms";
-import { useEffect, useMemo } from "react";
+import { formatArea } from "@/utils/units";
+import { useEffect, useMemo, useRef } from "react";
 
 export default function RoomList() {
     const { data, upsertRoomMeta, updateRoomMeta } = useEditor();
-    const { unit } = useEngine();
+    const { unit, isInteracting } = useEngine();
+
+    const lastRoomsRef = useRef<ReturnType<typeof detectRoomsFromWalls>>([]);
 
     const rooms = useMemo(() => {
-        return detectRoomsFromWalls(data.walls, {
+        if (isInteracting) return lastRoomsRef.current;
+        const computed = detectRoomsFromWalls(data.walls, {
             epsilon: 1e-3,
             minArea: 2500,
         });
-    }, [data.walls]);
+        lastRoomsRef.current = computed;
+        return computed;
+    }, [data.walls, isInteracting]);
 
     const metaByKey = useMemo(() => {
         const entries = data.roomsMeta ?? [];
@@ -33,8 +39,6 @@ export default function RoomList() {
             }
         }
     }, [rooms, metaByKey, upsertRoomMeta]);
-
-    const unitSuffix = `${unit}²`;
 
     return (
         <div className="fp-panel fp-stack">
@@ -70,7 +74,7 @@ export default function RoomList() {
                             </div>
 
                             <div style={{ fontFamily: "monospace", fontSize: 12, color: "#374151", whiteSpace: 'nowrap' }}>
-                                {Math.round(room.area)} {unitSuffix}
+                                {formatArea(room.area, unit)}
                             </div>
                         </div>
                     ))}

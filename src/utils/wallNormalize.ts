@@ -11,6 +11,25 @@ type NormalizedSegment = {
 
 const EPS = 1e-6;
 
+function approxKeyForPoint(p: Point, tol: number): string {
+    const qx = Math.round(p.x / tol);
+    const qy = Math.round(p.y / tol);
+    return `${qx},${qy}`;
+}
+
+function wallDedupeKey(w: Wall, tol: number): string {
+    const a = w.points[0];
+    const b = w.points[1];
+
+    const ak = approxKeyForPoint(a, tol);
+    const bk = approxKeyForPoint(b, tol);
+
+    // stable ordering so [a,b] and [b,a] produce same key
+    const p0 = ak <= bk ? ak : bk;
+    const p1 = ak <= bk ? bk : ak;
+    return `${w.floor}|${w.thickness}|${p0}|${p1}`;
+}
+
 function canonicalDir(dir: Point): Point {
     // Make direction stable so +d and -d represent the same line
     if (dir.x < -EPS) return { x: -dir.x, y: -dir.y };
@@ -154,6 +173,11 @@ export function splitWallsAtIntersections(
             const wj = walls[j]!;
             if (floorOnly && wi.floor !== wj.floor) continue;
 
+            // Thickness-aware tolerance for creating T-joints when moving walls.
+            // If an endpoint is within about half thickness of another wall's
+            // centerline segment, treat it as a join.
+            const endpointTolLocal = Math.max(endpointTol, wi.thickness * 0.5, wj.thickness * 0.5);
+
             const segJ = wj.points;
 
             const inter = Line2.segmentIntersect(segI, segJ);
@@ -166,14 +190,14 @@ export function splitWallsAtIntersections(
             // T-junction: endpoint of one wall lies on the other segment
             for (const end of segI) {
                 const d = Line2.getDistanceToSegment(end, segJ);
-                if (d <= endpointTol) {
+                if (d <= endpointTolLocal) {
                     const tOnJ = computeTOnSegment(end, segJ[0], segJ[1]);
                     if (tOnJ > 1e-5 && tOnJ < 1 - 1e-5) splits.get(wj.id)!.push(tOnJ);
                 }
             }
             for (const end of segJ) {
                 const d = Line2.getDistanceToSegment(end, segI);
-                if (d <= endpointTol) {
+                if (d <= endpointTolLocal) {
                     const tOnI = computeTOnSegment(end, segI[0], segI[1]);
                     if (tOnI > 1e-5 && tOnI < 1 - 1e-5) splits.get(wi.id)!.push(tOnI);
                 }
@@ -220,6 +244,33 @@ export function normalizeWallOverlaps(
 
     if (walls.length <= 1) return { walls, idMap: {} };
 
+    // Used to decide whether an internal breakpoint should be preserved.
+    // Performance note: do NOT scan all endpoints per breakpoint (it gets laggy).
+    // Instead build a simple per-floor spatial hash so queries are local.
+    const gridCellSize = 5; // matches our tolerance caps elsewhere
+    type EndpointRec = { p: Point; wallId: string };
+    const endpointGridByFloor = new Map<number, Map<string, EndpointRec[]>>();
+    const cellKey = (cx: number, cy: number) => `${cx},${cy}`;
+    const cellOf = (p: Point) => ({
+        cx: Math.floor(p.x / gridCellSize),
+        cy: Math.floor(p.y / gridCellSize),
+    });
+
+    for (const w of walls) {
+        let grid = endpointGridByFloor.get(w.floor);
+        if (!grid) {
+            grid = new Map<string, EndpointRec[]>();
+            endpointGridByFloor.set(w.floor, grid);
+        }
+        for (const p of w.points) {
+            const { cx, cy } = cellOf(p);
+            const key = cellKey(cx, cy);
+            const bucket = grid.get(key) ?? [];
+            bucket.push({ p, wallId: w.id });
+            grid.set(key, bucket);
+        }
+    }
+
     // Union-find for clustering walls by (floor, thickness, infinite line)
     const parent = walls.map((_, i) => i);
     const find = (i: number): number => {
@@ -241,6 +292,11 @@ export function normalizeWallOverlaps(
         const dirI = canonicalDir(Vec2.normalize(dirIraw));
         if (Vec2.magSq(dirIraw) < EPS) continue;
 
+        // Be slightly more tolerant for thicker walls; helps merge tiny gaps
+        // introduced by dragging/snapping without over-merging distant geometry.
+        const thicknessTol = Math.min(5, Math.max(0, wi.thickness * 0.25));
+        const collinearDistTolLocal = Math.max(collinearDistTol, thicknessTol);
+
         for (let j = i + 1; j < walls.length; j++) {
             const wj = walls[j]!;
             if (wi.floor !== wj.floor) continue;
@@ -255,7 +311,7 @@ export function normalizeWallOverlaps(
 
             // same infinite line?
             const dist = distPointToInfiniteLine(wj.points[0], wi.points[0], dirI);
-            if (dist > collinearDistTol) continue;
+            if (dist > collinearDistTolLocal) continue;
 
             union(i, j);
         }
@@ -296,6 +352,32 @@ export function normalizeWallOverlaps(
         };
 
         const groupWalls = indices.map(i => walls[i]!);
+        const clusterWallIds = new Set(groupWalls.map(w => w.id));
+
+        // Within a cluster we can safely scale tolerances based on thickness.
+        // This makes "straight but separated" segments merge (gap fill) for
+        // common CAD-like edits where endpoints drift slightly.
+        const thicknessTol = Math.min(5, Math.max(0, first.thickness * 0.25));
+        const joinTolLocal = Math.max(joinTol, thicknessTol);
+        const scalarTolLocal = Math.max(scalarTol, thicknessTol * 0.5);
+
+        const protectTol = Math.max(0.5, thicknessTol);
+        const floorGrid = endpointGridByFloor.get(first.floor) ?? new Map<string, EndpointRec[]>();
+        const isProtectedBreakpoint = (p: Point): boolean => {
+            const { cx, cy } = cellOf(p);
+            const rCells = Math.ceil(protectTol / gridCellSize);
+            for (let dx = -rCells; dx <= rCells; dx++) {
+                for (let dy = -rCells; dy <= rCells; dy++) {
+                    const bucket = floorGrid.get(cellKey(cx + dx, cy + dy));
+                    if (!bucket) continue;
+                    for (const e of bucket) {
+                        if (clusterWallIds.has(e.wallId)) continue;
+                        if (Vec2.dist(e.p, p) <= protectTol) return true;
+                    }
+                }
+            }
+            return false;
+        };
 
         const intervals = groupWalls.map(w => {
             const s0 = sOf(w.points[0]);
@@ -303,7 +385,7 @@ export function normalizeWallOverlaps(
             return [Math.min(s0, s1), Math.max(s0, s1)] as [number, number];
         });
 
-        const unions = computeUnionIntervals(intervals, joinTol);
+        const unions = computeUnionIntervals(intervals, joinTolLocal);
 
         const produced: NormalizedSegment[] = [];
 
@@ -315,11 +397,21 @@ export function normalizeWallOverlaps(
                 const b = sOf(w.points[1]);
                 const min = Math.min(a, b);
                 const max = Math.max(a, b);
-                if (min >= u0 - scalarTol && min <= u1 + scalarTol) scalars.push(min);
-                if (max >= u0 - scalarTol && max <= u1 + scalarTol) scalars.push(max);
+                if (min >= u0 - scalarTolLocal && min <= u1 + scalarTolLocal) scalars.push(min);
+                if (max >= u0 - scalarTolLocal && max <= u1 + scalarTolLocal) scalars.push(max);
             }
 
-            const breakpoints = uniqSortedScalars(scalars, scalarTol);
+            // Remove internal breakpoints that are no longer junctions.
+            // Example: a straight wall was split due to a T-joint, then the T-wall
+            // was moved away; we should merge the straight wall back into one.
+            const rawBreakpoints = uniqSortedScalars(scalars, scalarTolLocal);
+            const breakpoints = rawBreakpoints.filter((s) => {
+                if (Math.abs(s - u0) <= scalarTolLocal) return true;
+                if (Math.abs(s - u1) <= scalarTolLocal) return true;
+                const p = pointAt(s);
+                return isProtectedBreakpoint(p);
+            });
+
             for (let k = 0; k < breakpoints.length - 1; k++) {
                 const aS = breakpoints[k]!;
                 const bS = breakpoints[k + 1]!;
@@ -331,7 +423,7 @@ export function normalizeWallOverlaps(
                 for (let idx = 0; idx < groupWalls.length; idx++) {
                     const w = groupWalls[idx]!;
                     const [i0, i1] = intervals[idx]!;
-                    if (midS >= i0 - joinTol && midS <= i1 + joinTol) {
+                    if (midS >= i0 - joinTolLocal && midS <= i1 + joinTolLocal) {
                         sourceWallIds.push(w.id);
                     }
                 }
@@ -367,7 +459,7 @@ export function normalizeWallOverlaps(
                 const b = sOf(seg[1]);
                 const min = Math.min(a, b);
                 const max = Math.max(a, b);
-                if (midS >= min - joinTol && midS <= max + joinTol) {
+                if (midS >= min - joinTolLocal && midS <= max + joinTolLocal) {
                     const dist = Math.abs(((min + max) / 2) - midS);
                     if (dist < bestDist) {
                         bestDist = dist;
@@ -392,7 +484,25 @@ export function normalizeWallOverlaps(
         }
     }
 
-    return { walls: out, idMap };
+    // Final cleanup: drop duplicate walls that land exactly on top of each other.
+    // This can happen after edits that create connector/filler walls, or when
+    // normalization runs repeatedly and tiny numeric differences collapse.
+    const dedupeTol = 1e-3;
+    const seen = new Map<string, string>(); // key -> keptWallId
+    const deduped: Wall[] = [];
+    for (const w of out) {
+        const key = wallDedupeKey(w, dedupeTol);
+        const existing = seen.get(key);
+        if (!existing) {
+            seen.set(key, w.id);
+            deduped.push(w);
+            continue;
+        }
+        // Map removed wall id to the kept one so attachments can follow.
+        idMap[w.id] = existing;
+    }
+
+    return { walls: deduped, idMap };
 }
 
 export function normalizeWalls(

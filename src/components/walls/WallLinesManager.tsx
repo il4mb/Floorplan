@@ -23,15 +23,14 @@ export interface WallLinesManagerProps {
 
 export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const { snapGrid } = useSnap();
-    const { updateWalls, addWalls, normalizeWalls } = useEditor();
+    const { updateWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
-    const { mode, scalePixel } = useEngine();
+    const { mode, scalePixel, setIsInteracting } = useEngine();
 
     const [hoveredId, setHoveredId] = useState<string>();
     const [movingId, setMovingId] = useState<string>();
     const [connections, setConnections] = useState<Connection[]>([]);
     const [intersections, setIntersections] = useState<Wall[]>([]);
-    const [moveStart, setMoveStart] = useState<{ id: string; p0: Point; p1: Point } | null>(null);
 
     const cuttedLines = useMemo<{ id: string, segment: LineSegment }[]>(() => 
         walls.map(wall => {
@@ -62,6 +61,22 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         
         return min <= HOVER_THRESHOLD ? id : undefined;
     }, [cuttedLines, HOVER_THRESHOLD]);
+
+    const findNearestVertex = useCallback((p: Point, excludeWallId: string, tol: number): Point | null => {
+        let best: Point | null = null;
+        let bestDist = Infinity;
+        for (const w of walls) {
+            if (w.id === excludeWallId) continue;
+            for (const end of w.points) {
+                const d = Vec2.dist(p, end);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = end;
+                }
+            }
+        }
+        return bestDist <= tol ? best : null;
+    }, [walls]);
 
     // Portal for wall movement UI
     useCreatePortal(() => (
@@ -171,52 +186,35 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         
         setConnections(connections);
         setMovingId(hoveredId);
-        setMoveStart({ id: wall.id, p0: { ...wall.points[0] }, p1: { ...wall.points[1] } });
+        setIsInteracting(true);
     }, [hoveredId, mode, walls]);
 
     useMouseUp(() => {
         if (!movingId || ["slice-wall", "eraser"].includes(mode)) return;
 
+        // Auto-join: snap moved wall endpoints to existing vertices if close.
         const movedWall = walls.find(w => w.id === movingId);
-        const started = moveStart && moveStart.id === movingId ? moveStart : null;
-
-        // If this wall was previously connected at endpoints, keep neighbors fixed and add
-        // a small connector wall from the old joint point to the moved endpoint.
-        if (movedWall && started) {
-            const patches: Omit<Wall, 'id'>[] = [];
-
-            const p0Conn = connections.find(c => c.index === 0);
-            const p1Conn = connections.find(c => c.index === 1);
-
-            if (p0Conn && Vec2.dist(started.p0, movedWall.points[0]) > 1e-3) {
-                patches.push({
-                    points: [started.p0, movedWall.points[0]],
-                    thickness: movedWall.thickness,
-                    floor: movedWall.floor,
-                });
+        if (movedWall) {
+            const tol = Math.max(0.5, movedWall.thickness * 0.5);
+            const p0 = movedWall.points[0];
+            const p1 = movedWall.points[1];
+            const j0 = findNearestVertex(p0, movedWall.id, tol);
+            const j1 = findNearestVertex(p1, movedWall.id, tol);
+            if (j0 || j1) {
+                updateWalls(
+                    [movedWall.id],
+                    [{
+                        points: [j0 ?? p0, j1 ?? p1],
+                    }]
+                );
             }
-            if (p1Conn && Vec2.dist(started.p1, movedWall.points[1]) > 1e-3) {
-                patches.push({
-                    points: [started.p1, movedWall.points[1]],
-                    thickness: movedWall.thickness,
-                    floor: movedWall.floor,
-                });
-            }
-
-            if (patches.length > 0) {
-                addWalls(patches);
-            } else {
-                normalizeWalls();
-            }
-        } else {
-            normalizeWalls();
         }
 
         setMovingId(undefined);
         setHoveredId(undefined);
         setConnections([]);
-        setMoveStart(null);
-    }, [movingId, mode, normalizeWalls, addWalls, walls, moveStart, connections]);
+        setIsInteracting(false);
+    }, [movingId, mode, setIsInteracting, walls, findNearestVertex, updateWalls]);
 
     useMouseMove((e) => {
         if (e.isDefaultPrevented() || ["slice-wall", "eraser"].includes(mode)) return;

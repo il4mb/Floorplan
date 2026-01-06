@@ -50,12 +50,12 @@ export const useEditor = () => {
 
     const addWall = (patch: Omit<Wall, 'id'>) => setData(prev => {
         const nextWalls = [...prev.walls, { ...patch, id: nanoid() }];
-        return applyWallNormalization(prev, nextWalls);
+        return { ...prev, walls: nextWalls };
     });
 
     const addWalls = (patches: Omit<Wall, 'id'>[]) => setData(prev => {
         const nextWalls = [...prev.walls, ...(patches.map(wall => ({ ...wall, id: nanoid() })))];
-        return applyWallNormalization(prev, nextWalls);
+        return { ...prev, walls: nextWalls };
     });
 
     const splitWall = useCallback((wallId: string, t: number) => {
@@ -82,7 +82,7 @@ export const useEditor = () => {
 
             const nextWalls = prev.walls.filter(w => w.id !== wallId);
             nextWalls.push(firstSeg, secondSeg);
-            return applyWallNormalization(prev, nextWalls);
+            return { ...prev, walls: nextWalls };
         });
     }, []);
 
