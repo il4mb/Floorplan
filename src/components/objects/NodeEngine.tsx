@@ -1,4 +1,4 @@
-import { useCanvas, useMouseDown, useMouseMove, useMouseUp } from "@/hooks/useCanvas";
+import { useCanvas, useMouseMove, useMouseUp } from "@/hooks/useCanvas";
 import { useEditor } from "@/hooks/useEditor";
 import { useEngine } from "@/hooks/useEngine";
 import { useSnap } from "@/hooks/useSnap";
@@ -38,38 +38,18 @@ export default function NodeEngine() {
         return map;
     }, [nodes, walls]);
 
-    const pickNodeAtPoint = (world: Point) => {
-        // Later items render on top; iterate reverse for hit-test.
-        for (let i = nodes.length - 1; i >= 0; i--) {
-            const node = nodes[i];
-            if (!node) continue;
-            const def = getObjectDefinition(node.kind);
-            const halfW = def.size.width / 2;
-            const halfH = def.size.height / 2;
-
-            const pose = nodePoses.get(node.id);
-            const center = pose?.coordinate ?? node.coordinate;
-
-            // Simple axis-aligned hit test (ignores rotation)
-            const dx = world.x - center.x;
-            const dy = world.y - center.y;
-            if (Math.abs(dx) <= halfW && Math.abs(dy) <= halfH) return node;
-        }
-        return null;
-    };
-
-    useMouseDown((e) => {
-        const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
-        const node = pickNodeAtPoint(world);
+    const beginDrag = (nodeId: string, world: Point) => {
+        const node = nodes.find(n => n.id === nodeId);
         if (!node) return;
+        const pose = nodePoses.get(node.id);
+        const center = pose?.coordinate ?? node.coordinate;
 
-        e.preventDefault();
         setSelectedId(node.id);
         setDragging({
             id: node.id,
-            offset: { x: world.x - node.coordinate.x, y: world.y - node.coordinate.y },
+            offset: { x: world.x - center.x, y: world.y - center.y },
         });
-    }, [clientToWorldPoint, nodes]);
+    };
 
     useMouseMove((e) => {
         if (!dragging) return;
@@ -117,6 +97,24 @@ export default function NodeEngine() {
                     <g
                         key={node.id}
                         transform={`translate(${coordinate.x} ${coordinate.y}) rotate(${rotation})`}>
+                        {/* Hit target: captures mouse down so walls don't steal drags */}
+                        <rect
+                            x={-(w / 2) - (node.kind === 'door' ? scalePixel(22) : scalePixel(10))}
+                            y={-(h / 2) - (node.kind === 'door' ? scalePixel(22) : scalePixel(10))}
+                            width={w + (node.kind === 'door' ? scalePixel(44) : scalePixel(20))}
+                            height={h + (node.kind === 'door' ? scalePixel(44) : scalePixel(20))}
+                            fill="rgba(0,0,0,0)"
+                            stroke="rgba(0,0,0,0)"
+                            style={{ cursor: 'move' }}
+                            onMouseDown={(e) => {
+                                if (e.button !== 0) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
+                                beginDrag(node.id, world);
+                            }}
+                        />
+
                         <ObjectSvg kind={node.kind} width={w} height={h} selected={isSelected} />
 
                         {(node.kind === 'door' || isSelected) && (

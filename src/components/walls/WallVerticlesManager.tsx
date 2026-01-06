@@ -147,6 +147,7 @@ export default function WallVerticesManager({ walls }: Props) {
     }, [snapGrid, moving, walls, updateWall]);
 
     useMouseDown((e) => {
+        if (e.isDefaultPrevented()) return;
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
         const nearest = Vec2.nearest(world, points);
         if (nearest.distance < CLICK_THRESHOLD) {
