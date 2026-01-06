@@ -30,8 +30,12 @@ export interface Wall {
 }
 export interface Node {
     id: string;
+    kind?: string;
     coordinate: Point;
     rotation: number;
+    // Optional: when an object must be attached to a wall (e.g. door)
+    wallId?: string;
+    wallT?: number;
 }
 export interface PlanData {
     walls: Wall[];

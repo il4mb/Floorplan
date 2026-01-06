@@ -5,13 +5,19 @@ import { MouseEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useStat
 import FixedGridCanvas from './FixedGridCanvas';
 import WallEngine from './walls/WallEngine';
 import CanvasPortal from './CanvasPortal';
+import NodeEngine from './objects/NodeEngine';
+import { OBJECT_DRAG_MIME, parseObjectDragPayload } from './objects/objectRegistry';
+import { nanoid } from 'nanoid';
+import { useEditor } from '@/hooks/useEditor';
+import { findNearestWallAttachment } from './objects/wallAttach';
 
 export interface canvasProps {
     children?: ReactNode;
 }
 export default function Canvas({ }: canvasProps) {
 
-    const { gridSize, view, mode, updateView } = useEngine();
+    const { gridSize, view, mode, updateView, scalePixel } = useEngine();
+    const { addNode, data } = useEditor();
 
     const listeners = useRef<EventListeners>(new Map());
     const svgRef = useRef<SVGSVGElement>(null);
@@ -169,6 +175,46 @@ export default function Canvas({ }: canvasProps) {
         });
     }, [view, updateView, invokeListeners]);
 
+    const handleDragOver = useCallback((e: React.DragEvent<SVGSVGElement>) => {
+        // Allow drop
+        if (e.dataTransfer.types.includes(OBJECT_DRAG_MIME)) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        }
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent<SVGSVGElement>) => {
+        const raw = e.dataTransfer.getData(OBJECT_DRAG_MIME);
+        const payload = parseObjectDragPayload(raw);
+        if (!payload) return;
+
+        e.preventDefault();
+        const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
+
+        if (payload.kind === 'door') {
+            const nearest = findNearestWallAttachment(world, data.walls);
+            const threshold = scalePixel(30);
+            if (!nearest || nearest.distance > threshold) return;
+
+            addNode({
+                id: nanoid(),
+                kind: payload.kind,
+                coordinate: nearest.point,
+                rotation: nearest.angleDeg,
+                wallId: nearest.wallId,
+                wallT: nearest.t,
+            });
+            return;
+        }
+
+        addNode({
+            id: nanoid(),
+            kind: payload.kind,
+            coordinate: world,
+            rotation: 0,
+        });
+    }, [addNode, clientToWorldPoint, data.walls, scalePixel]);
+
     useEffect(() => {
         if (rect.width > 0 && rect.height > 0 && !isInitialized) {
             const centerX = -rect.width / (2 * view.zoom);
@@ -225,6 +271,8 @@ export default function Canvas({ }: canvasProps) {
                         onMouseEnter={handleMouseEnter}
                         onContextMenu={handleContextMenu}
                         onWheel={handleWheel}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
                         width={'100%'}
                         height={'100%'}
                         viewBox={viewBox}
@@ -234,6 +282,8 @@ export default function Canvas({ }: canvasProps) {
                             <g style={{ transformOrigin: "center" }}>
                                 <WallEngine />
                             </g>
+
+                            <NodeEngine />
                             <circle
                                 cx={0}
                                 cy={0}

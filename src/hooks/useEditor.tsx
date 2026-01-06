@@ -1,4 +1,4 @@
-import { PlanData, Wall } from "@/types";
+import { Node as PlanNode, PlanData, Wall } from "@/types";
 import { createContext, Dispatch, SetStateAction, useCallback, useContext } from "react";
 import { nanoid } from "nanoid";
 export type EditorState = {
@@ -40,10 +40,10 @@ export const useEditor = () => {
         }));
     }, []);
 
-    const addNode = useCallback((node: Node) =>
-        setData(prev => ({ ...prev, nodes: [...prev.node, node] })), []);
+    const addNode = useCallback((node: PlanNode) =>
+        setData(prev => ({ ...prev, node: [...prev.node, node] })), []);
 
-    const updateNode = useCallback((id: string, partial: Partial<Node>) =>
+    const updateNode = useCallback((id: string, partial: Partial<PlanNode>) =>
         setData(prev => ({
             ...prev,
             node: prev.node.map(n => n.id === id ? { ...n, ...partial } : n)

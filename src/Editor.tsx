@@ -1,10 +1,10 @@
-import { ReactNode, useState, useEffect, useMemo } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { EditorContext } from './hooks/useEditor';
 import Canvas from './components/Canvas';
 import EngineProvider from './components/EngineProvider';
 import "@/styles.scss";
 import Sidebar from './components/Sidebar';
-import { PlanData, Wall } from './types';
+import { PlanData } from './types';
 
 export interface EditorProps {
     children?: ReactNode;
@@ -13,17 +13,17 @@ export interface EditorProps {
 const STORAGE_KEY = "floorplan:data";
 
 export default function Editor({ children }: EditorProps) {
-
-    const defaultWalls = useMemo<Wall[]>(() => [{
-        points: [{ x: 0, y: 0 }, { x: 100, y: 0 }],
-        id: 't-01',
-        thickness: 0
-    }], [])
-
     const [data, setData] = useState<PlanData>(() => {
         try {
             const saved = localStorage.getItem(STORAGE_KEY);
-            return saved ? JSON.parse(saved) : { walls: [], node: [] };
+            if (!saved) return { walls: [], node: [] };
+            const parsed = JSON.parse(saved);
+            // tolerate older shapes (e.g. `nodes` instead of `node`)
+            const node = Array.isArray(parsed?.node)
+                ? parsed.node
+                : (Array.isArray(parsed?.nodes) ? parsed.nodes : []);
+            const walls = Array.isArray(parsed?.walls) ? parsed.walls : [];
+            return { walls, node };
         } catch {
             return { walls: [], node: [] };
         }
@@ -46,6 +46,7 @@ export default function Editor({ children }: EditorProps) {
                 <div className='floorplan-editor'>
                     <Sidebar />
                     <Canvas />
+                    {children}
                 </div>
             </EngineProvider>
         </EditorContext.Provider>
