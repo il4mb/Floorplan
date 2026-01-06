@@ -23,9 +23,9 @@ export interface WallLinesManagerProps {
 
 export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const { snapGrid } = useSnap();
-    const { updateWalls } = useEditor();
+    const { updateWalls, normalizeWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
-    const { mode } = useEngine();
+    const { mode, scalePixel } = useEngine();
 
     const [hoveredId, setHoveredId] = useState<string>();
     const [movingId, setMovingId] = useState<string>();
@@ -45,6 +45,8 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const isHovering = Boolean(hoveredId);
     const connectionCount = connections.reduce((total, conn) => total + conn.connections.length, 0);
 
+    const HOVER_THRESHOLD = useMemo(() => scalePixel(14, 6, 40), [scalePixel]);
+
     const findNearestId = useCallback((world: Point) => {
         let min = Infinity;
         let id: string | undefined;
@@ -57,8 +59,8 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
             }
         }
         
-        if (min <= 4) return id;
-    }, [cuttedLines]);
+        return min <= HOVER_THRESHOLD ? id : undefined;
+    }, [cuttedLines, HOVER_THRESHOLD]);
 
     // Portal for wall movement UI
     useCreatePortal(() => (
@@ -170,12 +172,13 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         setMovingId(hoveredId);
     }, [hoveredId, mode, walls]);
 
-    useMouseUp((e) => {
+    useMouseUp(() => {
         if (!movingId || ["slice-wall", "eraser"].includes(mode)) return;
         setMovingId(undefined);
         setHoveredId(undefined);
         setConnections([]);
-    }, [movingId, mode]);
+        normalizeWalls();
+    }, [movingId, mode, normalizeWalls]);
 
     useMouseMove((e) => {
         if (e.isDefaultPrevented() || ["slice-wall", "eraser"].includes(mode)) return;

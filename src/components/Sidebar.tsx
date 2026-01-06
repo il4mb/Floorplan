@@ -2,12 +2,13 @@ import { useEngine } from '@/hooks/useEngine';
 import { Eraser, HandGrab, Slice, SplinePointer } from "lucide-react";
 import ActionButton from './ActionButton';
 import ObjectGallery from './objects/ObjectGallery';
+import RoomList from './rooms/RoomList';
 
 export default function Sidebar() {
     const { mode, setMode } = useEngine();
     return (
         <div className='floorplan-sidebar'>
-            <div style={{ display: 'flex', gap: 8, padding: 12, flexWrap: 'wrap' }}>
+            <div className='fp-panel' style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <ActionButton active={mode == "wall"} onClick={() => setMode("wall")}>
                     <SplinePointer size={16} />
                 </ActionButton>
@@ -23,6 +24,8 @@ export default function Sidebar() {
             </div>
 
             <ObjectGallery />
+
+            <RoomList />
         </div>
     );
 }

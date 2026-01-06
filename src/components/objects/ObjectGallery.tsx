@@ -3,8 +3,8 @@ import { ObjectGlyph } from "./objectShapes";
 
 export default function ObjectGallery() {
     return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
-            <div style={{ fontWeight: 800, fontSize: 14, color: "#262626" }}>Objects</div>
+        <div className="fp-panel fp-stack">
+            <div className="fp-title">Objects</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
                 {OBJECT_DEFINITIONS.map((def) => (
                     <button
@@ -21,14 +21,7 @@ export default function ObjectGallery() {
                             e.dataTransfer.effectAllowed = "copy";
                         }}
                         title="Drag onto canvas"
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            width: "100%",
-                            justifyContent: "flex-start",
-                            padding: "10px 12px",
-                        }}>
+                        style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", justifyContent: "flex-start" }}>
                         <span
                             style={{
                                 width: 44,

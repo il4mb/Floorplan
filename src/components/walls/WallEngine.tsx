@@ -7,7 +7,6 @@ import WallVerticlesManager from './WallVerticlesManager';
 import Poly2 from '@/utils/polygon2d';
 import WallLinesManager from './WallLinesManager';
 import WallSlicer from './WallSlicer';
-import WallOverlapSlicer from './WallOverlapSlicer';
 import WallEraser from './WallEraser';
 
 
@@ -18,10 +17,6 @@ export default function WallEngine() {
     const walls = useMemo(() => data.walls, [data.walls]);
     const { wallsPolygon } = useWallGeometry(walls);
     const [wMode, setWMode] = useState<WallEngineState['mode']>(undefined);
-
-    useEffect(() => {
-        console.log(wMode)
-    }, [wMode])
 
     const value = useMemo<WallEngineState>(() => ({
         wallsPolygon,
@@ -63,8 +58,6 @@ export default function WallEngine() {
                     <WallDrawer />
                 </>
             )}
-
-            <WallOverlapSlicer walls={walls} />
         </WallEngineContext.Provider>
     );
 }

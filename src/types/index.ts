@@ -37,7 +37,14 @@ export interface Node {
     wallId?: string;
     wallT?: number;
 }
+
+export interface RoomMeta {
+    key: string;
+    name: string;
+    color: string; // hex or css color
+}
 export interface PlanData {
     walls: Wall[];
     node: Node[];
+    roomsMeta?: RoomMeta[];
 }

@@ -21,7 +21,7 @@ export interface WallSlicerProps {
 }
 
 export default function WallSlicer({ walls }: WallSlicerProps) {
-    const { removeWalls, addWalls } = useEditor();
+    const { splitWall } = useEditor();
     const clearWalls = useClearShortWalls();
     const pointer = usePointer();
     
@@ -158,7 +158,6 @@ export default function WallSlicer({ walls }: WallSlicerProps) {
         if (!nearest?.wall || !nearest.point) return;
         
         const wallId = nearest.wall.id;
-        const thickness = nearest.wall.thickness;
         const [A, B] = nearest.wall.points;
         const P = nearest.point;
         const AB = Vec2.sub(B, A);
@@ -167,11 +166,9 @@ export default function WallSlicer({ walls }: WallSlicerProps) {
 
         if (t <= 0 || t >= 1) return;
 
-        const splitedSegs = Line2.splitSegment([A, B], t);
-        addWalls(splitedSegs.map(seg => ({ points: seg, thickness, floor: 0 })));
-        removeWalls(wallId);
+        splitWall(wallId, t);
         clearWalls();
-    }, [nearest, addWalls, removeWalls, clearWalls]);
+    }, [nearest, splitWall, clearWalls]);
 
     return (
         <>

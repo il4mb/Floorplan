@@ -4,18 +4,118 @@ import { useEngine } from '@/hooks/useEngine';
 import { useCreatePortal } from '@/hooks/usePortal';
 import { useSnap } from '@/hooks/useSnap';
 import { Point } from '@/types';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Pencil, Ruler, MousePointer2 } from 'lucide-react';
 import Vec2 from '@/utils/vec2d';
 
 export default function WallDrawer() {
     const { scalePixel, setMode } = useEngine();
-    const { snapGrid } = useSnap();
+    const { snap, snapWall } = useSnap();
     const { clientToWorldPoint } = useCanvas();
-    const { addWall } = useEditor();
+    const { addWall, data } = useEditor();
     const [startPoint, setStartPoint] = useState<Point>();
     const [current, setCurrent] = useState<Point>();
+
+    const cancel = useCallback(() => {
+        setStartPoint(undefined);
+        setCurrent(undefined);
+        setMode('idle');
+    }, [setMode]);
+
+    const applyOrtho = useCallback((origin: Point, target: Point) => {
+        const dx = Math.abs(target.x - origin.x);
+        const dy = Math.abs(target.y - origin.y);
+        return dx >= dy ? { x: target.x, y: origin.y } : { x: origin.x, y: target.y };
+    }, []);
+
+    const wallDirs = useMemo(() => {
+        const dirs: number[] = [];
+        for (const w of data.walls) {
+            const a = w.points?.[0];
+            const b = w.points?.[1];
+            if (!a || !b) continue;
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const len = Math.hypot(dx, dy);
+            if (len < 1e-6) continue;
+            const ang = Math.atan2(dy, dx);
+            dirs.push(ang);
+        }
+        return dirs;
+    }, [data.walls]);
+
+    const normalizeAngle = useCallback((a: number) => {
+        let x = a;
+        while (x > Math.PI) x -= Math.PI * 2;
+        while (x < -Math.PI) x += Math.PI * 2;
+        return x;
+    }, []);
+
+    const angleDiff = useCallback((a: number, b: number) => {
+        return Math.abs(normalizeAngle(a - b));
+    }, [normalizeAngle]);
+
+    const applyAngleSnap = useCallback((origin: Point, target: Point, stepDeg: number, toleranceDeg: number) => {
+        const dx = target.x - origin.x;
+        const dy = target.y - origin.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-6) return { snapped: false, point: target };
+
+        const ang = Math.atan2(dy, dx);
+        const angDeg = (ang * 180) / Math.PI;
+        const snappedDeg = Math.round(angDeg / stepDeg) * stepDeg;
+        let delta = angDeg - snappedDeg;
+        // normalize delta to [-180,180]
+        while (delta > 180) delta -= 360;
+        while (delta < -180) delta += 360;
+
+        if (Math.abs(delta) > toleranceDeg) return { snapped: false, point: target };
+
+        const snappedRad = (snappedDeg * Math.PI) / 180;
+        const p = {
+            x: origin.x + Math.cos(snappedRad) * len,
+            y: origin.y + Math.sin(snappedRad) * len,
+        };
+        return { snapped: true, point: p };
+    }, []);
+
+    const applyWallParallelSnap = useCallback((origin: Point, target: Point) => {
+        const dx = target.x - origin.x;
+        const dy = target.y - origin.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-6 || wallDirs.length === 0) return { snapped: false, point: target };
+
+        const ang = Math.atan2(dy, dx);
+        const tol = (6 * Math.PI) / 180;
+
+        let bestAng: number | null = null;
+        let bestDelta = Infinity;
+
+        for (const wAng of wallDirs) {
+            // parallel
+            const d0 = angleDiff(ang, wAng);
+            if (d0 < bestDelta) {
+                bestDelta = d0;
+                bestAng = wAng;
+            }
+            // perpendicular
+            const wPerp = wAng + Math.PI / 2;
+            const d1 = angleDiff(ang, wPerp);
+            if (d1 < bestDelta) {
+                bestDelta = d1;
+                bestAng = wPerp;
+            }
+        }
+
+        if (bestAng == null || bestDelta > tol) return { snapped: false, point: target };
+
+        const p = {
+            x: origin.x + Math.cos(bestAng) * len,
+            y: origin.y + Math.sin(bestAng) * len,
+        };
+        return { snapped: true, point: p };
+    }, [wallDirs, angleDiff]);
 
     const isDrawing = Boolean(startPoint);
     const wallLength = useMemo(() => {
@@ -110,14 +210,74 @@ export default function WallDrawer() {
         </div>
     ), [isDrawing, wallLength]);
 
+    useEffect(() => {
+        if (!startPoint) return;
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') cancel();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [startPoint, cancel]);
+
     useMouseMove((e) => {
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
-        setCurrent(snapGrid(world));
-    }, [snapGrid, clientToWorldPoint]);
+        if (!startPoint) {
+            setCurrent(snap(world));
+            return;
+        }
+
+        // Alt: temporarily disable angle snapping
+        if (e.altKey) {
+            const endpoint = snapWall(world, 25);
+            setCurrent(snap(endpoint));
+            return;
+        }
+
+        // Shift: stronger snapping (45° increments). Also includes ortho.
+        if (e.shiftKey) {
+            const ortho = applyOrtho(startPoint, world);
+            const angSnap = applyAngleSnap(startPoint, ortho, 45, 10);
+            if (angSnap.snapped) {
+                setCurrent(snapWall(angSnap.point, 25));
+            } else {
+                setCurrent(snap(ortho));
+            }
+            return;
+        }
+
+        // Smart snaps:
+        // 1) parallel/perpendicular to existing walls
+        // 2) angle increments (15°)
+        const parallel = applyWallParallelSnap(startPoint, world);
+        if (parallel.snapped) {
+            setCurrent(snapWall(parallel.point, 25));
+            return;
+        }
+
+        const angSnap = applyAngleSnap(startPoint, world, 15, 6);
+        if (angSnap.snapped) {
+            setCurrent(snapWall(angSnap.point, 25));
+        } else {
+            setCurrent(snap(world));
+        }
+    }, [snap, snapWall, clientToWorldPoint, startPoint, applyOrtho, applyAngleSnap, applyWallParallelSnap]);
 
     useMouseDown((e) => {
         if (e.button == 0) {
-            const world = snapGrid(clientToWorldPoint({ x: e.clientX, y: e.clientY }));
+            const worldRaw = clientToWorldPoint({ x: e.clientX, y: e.clientY });
+            let constrained = startPoint && e.shiftKey ? applyOrtho(startPoint, worldRaw) : worldRaw;
+
+            if (startPoint && !e.altKey) {
+                if (e.shiftKey) {
+                    constrained = applyAngleSnap(startPoint, constrained, 45, 10).point;
+                } else {
+                    const parallel = applyWallParallelSnap(startPoint, constrained);
+                    if (parallel.snapped) constrained = parallel.point;
+                    else constrained = applyAngleSnap(startPoint, constrained, 15, 6).point;
+                }
+            }
+
+            const world = snap(constrained);
             if (!startPoint) {
                 setStartPoint(world);
             } else {
@@ -130,11 +290,9 @@ export default function WallDrawer() {
             }
         } else {
             // Right click to cancel
-            setStartPoint(undefined);
-            setCurrent(undefined);
-            setMode("idle");
+            cancel();
         }
-    }, [startPoint, clientToWorldPoint, snapGrid, addWall, setMode]);
+    }, [startPoint, clientToWorldPoint, snap, addWall, cancel, applyOrtho, applyAngleSnap, applyWallParallelSnap]);
 
     return (
         <>

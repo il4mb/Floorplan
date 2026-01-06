@@ -27,7 +27,15 @@
     }
 
     &sidebar {
-        flex-basis: 250px;
+        flex-basis: 320px;
+        width: 320px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+        overflow: auto;
+        background: #f5f2d4;
+        border-right: 1px solid rgba(38, 38, 38, 0.15);
     }
 
     &canvas {
@@ -80,9 +88,78 @@
     }
 }
 
+.fp-panel {
+    border: 1px solid rgba(38, 38, 38, 0.14);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.75);
+    padding: 12px;
+}
+
+.fp-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 800;
+    font-size: 13px;
+    color: #262626;
+    letter-spacing: 0.2px;
+}
+
+.fp-muted {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.fp-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.fp-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.fp-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(38, 38, 38, 0.10);
+}
+
+.fp-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(38, 38, 38, 0.18);
+    background: rgba(255, 255, 255, 0.9);
+    font-weight: 800;
+    outline: none;
+}
+
+.fp-input:focus {
+    border-color: #007aff;
+}
+
+.fp-color {
+    width: 34px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+}
+
 .action-button {
-    padding: 6px 12px;
-    border-radius: 6px;
+    padding: 10px 12px;
+    border-radius: 12px;
     background: #262626;
     color: #eaeaea;
     cursor: pointer;

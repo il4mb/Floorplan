@@ -23,10 +23,10 @@ export interface Props {
 }
 
 export default function WallVerticesManager({ walls }: Props) {
-    const { updateWall } = useEditor();
+    const { updateWall, normalizeWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
     const { scalePixel } = useEngine();
-    const { snapGrid } = useSnap();
+    const { snap } = useSnap();
     const cleanWalls = useClearShortWalls();
     const [moving, setMoving] = useState<Moving[]>([]);
     const [hoveredIndex, setHoveredIndex] = useState(-1);
@@ -135,22 +135,24 @@ export default function WallVerticesManager({ walls }: Props) {
     ), [isMoving, isHovering, movingCount]);
 
     const handleMoveWalls = useCallback((point: Point) => {
-        const snap = snapGrid(point);
+        const snapped = snap(point);
         moving.forEach((move) => {
             const wall = walls.find(w => w.id == move.wallId);
             if (!wall) return;
             const wallLineSeg = wall.points;
             const index = move.wallPointIndex;
-            const points = wallLineSeg.map((x, i) => i == index ? snap : x) as LineSegment;
+            const points = wallLineSeg.map((x, i) => i == index ? snapped : x) as LineSegment;
             updateWall(wall.id, { points });
         });
-    }, [snapGrid, moving, walls, updateWall]);
+    }, [snap, moving, walls, updateWall]);
 
     useMouseDown((e) => {
         if (e.isDefaultPrevented()) return;
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
         const nearest = Vec2.nearest(world, points);
         if (nearest.distance < CLICK_THRESHOLD) {
+            e.preventDefault();
+            e.currentTarget.style.cursor = "move";
             const nearestPoint = nearest.point;
             const moving = WallUtils.findConnectedAtPoint(nearestPoint, walls).map((connection) => ({
                 wallId: connection.wall.id,
@@ -167,16 +169,17 @@ export default function WallVerticesManager({ walls }: Props) {
         setMoving([]);
         setMovingIndex(-1);
         setHoveredIndex(-1);
-    }, [cleanWalls, isMoving]);
+        normalizeWalls();
+    }, [cleanWalls, isMoving, normalizeWalls]);
 
     useMouseMove((e) => {
-        if (e.isDefaultPrevented()) return;
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
         if (isMoving) {
             e.preventDefault();
             e.currentTarget.style.cursor = "move";
             handleMoveWalls(world);
         } else {
+            if (e.isDefaultPrevented()) return;
             const nearest = Vec2.nearest(world, points);
             const vertIndex = nearest.distance < CLICK_THRESHOLD ? nearest.index : -1;
             setHoveredIndex(vertIndex);

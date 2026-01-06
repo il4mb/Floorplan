@@ -18,7 +18,6 @@ export default function WallEraser({ walls }: WallEraserProps) {
     const { removeWalls } = useEditor();
     const wallsPolygon = useWallsPolygon();
     const [removeIds, setRemoveIds] = useState<string[]>([]);
-    const [isHoveringWall, setIsHoveringWall] = useState(false);
 
     const nearestWalls = useMemo(() => 
         pointer && walls.filter(wall => Line2.getDistanceToSegment(pointer, wall.points) < 10), 
@@ -136,7 +135,6 @@ export default function WallEraser({ walls }: WallEraserProps) {
     useMouseMove((e) => {
         const hasWalls = polygons.length > 0;
         e.currentTarget.style.cursor = hasWalls ? "pointer" : "default";
-        setIsHoveringWall(hasWalls);
         
         if (hasWalls) {
             setRemoveIds([]);

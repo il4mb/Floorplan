@@ -6,6 +6,7 @@ import FixedGridCanvas from './FixedGridCanvas';
 import WallEngine from './walls/WallEngine';
 import CanvasPortal from './CanvasPortal';
 import NodeEngine from './objects/NodeEngine';
+import RoomsOverlay from './rooms/RoomsOverlay';
 import { OBJECT_DRAG_MIME, parseObjectDragPayload } from './objects/objectRegistry';
 import { nanoid } from 'nanoid';
 import { useEditor } from '@/hooks/useEditor';
@@ -280,6 +281,7 @@ export default function Canvas({ }: canvasProps) {
                         <g transform={viewTransform}>
                             {/* <GridPoints /> */}
                             <g style={{ transformOrigin: "center" }}>
+                                <RoomsOverlay />
                                 <WallEngine />
                             </g>
 

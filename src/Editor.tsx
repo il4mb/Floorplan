@@ -2,7 +2,7 @@ import { ReactNode, useState, useEffect } from 'react';
 import { EditorContext } from './hooks/useEditor';
 import Canvas from './components/Canvas';
 import EngineProvider from './components/EngineProvider';
-import "@/styles.scss";
+import "@/styles.css";
 import Sidebar from './components/Sidebar';
 import { PlanData } from './types';
 
@@ -23,7 +23,8 @@ export default function Editor({ children }: EditorProps) {
                 ? parsed.node
                 : (Array.isArray(parsed?.nodes) ? parsed.nodes : []);
             const walls = Array.isArray(parsed?.walls) ? parsed.walls : [];
-            return { walls, node };
+            const roomsMeta = Array.isArray(parsed?.roomsMeta) ? parsed.roomsMeta : undefined;
+            return { walls, node, roomsMeta };
         } catch {
             return { walls: [], node: [] };
         }

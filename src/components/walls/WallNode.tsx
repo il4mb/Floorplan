@@ -3,7 +3,7 @@ import { useEditor } from '@/hooks/useEditor';
 import { useEngine } from '@/hooks/useEngine';
 import { useSnap } from '@/hooks/useSnap';
 import { Point, Wall as TypeWall } from '@/types';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Line2 from '@/utils/line2d';
 import WallUtils from '@/utils/wallUtils';
 import Poly2 from '@/utils/polygon2d';
@@ -20,7 +20,7 @@ export default function WallNode({ wall }: WallProps) {
 
     const { scalePixel } = useEngine();
     const { snapGrid } = useSnap();
-    const { updateWall, addWall, removeWalls: removeWall, data } = useEditor();
+    const { updateWall, data } = useEditor();
     const { clientToWorldPoint } = useCanvas();
     const wallsPolygon = useWallsPolygon();
     const polygon = useMemo(() => wallsPolygon.get(wall.id) || [], [wall.id, wallsPolygon]);
@@ -91,10 +91,6 @@ export default function WallNode({ wall }: WallProps) {
         }).filter(e => e != null);
     }, [wall.points, moveIndex, neighbors, wallsPolygon]);
 
-
-    useEffect(() => {
-        console.log(overlaps[0])
-    }, [overlaps])
 
     const intersections = useMemo(() => {
         if (moveIndex < 0) return [];

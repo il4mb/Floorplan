@@ -1,0 +1,161 @@
+@config "../tailwind.config.js";
+@import "tailwindcss";
+
+@layer base {
+  @font-face {
+    font-family: Figtree;
+    src: url("./Figtree.ttf") format("truetype");
+  }
+
+  * {
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+  }
+}
+
+@layer components {
+  .floorplan-editor {
+    @apply relative flex w-dvw h-dvh;
+    font-family: Figtree, Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  }
+
+  .floorplan-editor .wall-point-handle {
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  .floorplan-editor .wall-point-handle:hover {
+    transform: scale(2);
+  }
+
+  .floorplan-sidebar {
+    @apply basis-80 w-80 flex flex-col gap-3 p-3 overflow-auto;
+    @apply bg-amber-50 border-r border-zinc-900/10;
+  }
+
+  .floorplan-canvas {
+    @apply flex-1 relative w-full h-full overflow-hidden select-none;
+    @apply bg-amber-50;
+  }
+
+  .floorplan-canvas svg {
+    position: relative;
+    fill: transparent;
+    background: transparent;
+    z-index: 9;
+  }
+
+  .floorplan-canvas .grid-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+  }
+
+  .floorplan-canvas .canvas-portal {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 100;
+    pointer-events: none;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: start;
+    justify-content: start;
+    gap: 10px;
+  }
+
+  .fp-panel {
+    @apply rounded-2xl border border-zinc-900/10 bg-white/70 p-3;
+  }
+
+  .fp-title {
+    @apply flex items-center justify-between font-extrabold text-sm text-zinc-900;
+    letter-spacing: 0.2px;
+  }
+
+  .fp-muted {
+    @apply text-xs text-zinc-500;
+  }
+
+  .fp-stack {
+    @apply flex flex-col gap-2.5;
+  }
+
+  .fp-row {
+    @apply flex items-center gap-2.5;
+  }
+
+  .fp-card {
+    @apply flex items-center justify-between gap-2.5;
+    @apply rounded-xl border border-zinc-900/10 bg-zinc-950/5 px-3 py-2.5;
+  }
+
+  .fp-input {
+    @apply flex-1 min-w-0 rounded-xl border border-zinc-900/15;
+    @apply bg-white/80 px-2 py-1.5 text-sm font-semibold text-zinc-900 outline-none;
+  }
+
+  .fp-input:focus {
+    @apply border-primary-600;
+  }
+
+  .fp-color {
+    width: 34px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .action-button {
+    @apply inline-flex items-center justify-center;
+    @apply rounded-xl bg-zinc-900 px-3 py-2 text-sm font-semibold text-zinc-100;
+    @apply transition-colors hover:bg-zinc-800;
+    @apply outline-none border-0;
+  }
+
+  .action-button.is-active {
+    @apply bg-primary-600 text-white;
+  }
+
+  .action-button.is-disabled {
+    @apply opacity-50 cursor-not-allowed pointer-events-none;
+  }
+
+  .animate-breath {
+    --breath-duration: 1.6s;
+    --breath-scale: 1.5;
+    --breath-opacity: 0.85;
+
+    animation: breath var(--breath-duration) ease-in-out infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  @keyframes breath {
+    0% {
+      scale: 1;
+    }
+
+    50% {
+      scale: var(--breath-scale);
+      opacity: var(--breath-opacity);
+    }
+
+    100% {
+      scale: 1;
+    }
+  }
+
+  /* accessibility: respect user motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-breath {
+      animation: none;
+    }
+  }
+}

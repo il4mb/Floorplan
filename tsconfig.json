@@ -9,7 +9,6 @@
         ],
         "module": "ESNext",
         "moduleResolution": "bundler",
-        "allowImportingTsExtensions": true,
         "resolveJsonModule": true,
         "allowJs": true,
         "declaration": true,
