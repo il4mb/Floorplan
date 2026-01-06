@@ -23,7 +23,7 @@ export interface WallLinesManagerProps {
 
 export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const { snapGrid } = useSnap();
-    const { updateWalls, normalizeWalls } = useEditor();
+    const { updateWalls, addWalls, normalizeWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
     const { mode, scalePixel } = useEngine();
 
@@ -31,6 +31,7 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const [movingId, setMovingId] = useState<string>();
     const [connections, setConnections] = useState<Connection[]>([]);
     const [intersections, setIntersections] = useState<Wall[]>([]);
+    const [moveStart, setMoveStart] = useState<{ id: string; p0: Point; p1: Point } | null>(null);
 
     const cuttedLines = useMemo<{ id: string, segment: LineSegment }[]>(() => 
         walls.map(wall => {
@@ -170,15 +171,52 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         
         setConnections(connections);
         setMovingId(hoveredId);
+        setMoveStart({ id: wall.id, p0: { ...wall.points[0] }, p1: { ...wall.points[1] } });
     }, [hoveredId, mode, walls]);
 
     useMouseUp(() => {
         if (!movingId || ["slice-wall", "eraser"].includes(mode)) return;
+
+        const movedWall = walls.find(w => w.id === movingId);
+        const started = moveStart && moveStart.id === movingId ? moveStart : null;
+
+        // If this wall was previously connected at endpoints, keep neighbors fixed and add
+        // a small connector wall from the old joint point to the moved endpoint.
+        if (movedWall && started) {
+            const patches: Omit<Wall, 'id'>[] = [];
+
+            const p0Conn = connections.find(c => c.index === 0);
+            const p1Conn = connections.find(c => c.index === 1);
+
+            if (p0Conn && Vec2.dist(started.p0, movedWall.points[0]) > 1e-3) {
+                patches.push({
+                    points: [started.p0, movedWall.points[0]],
+                    thickness: movedWall.thickness,
+                    floor: movedWall.floor,
+                });
+            }
+            if (p1Conn && Vec2.dist(started.p1, movedWall.points[1]) > 1e-3) {
+                patches.push({
+                    points: [started.p1, movedWall.points[1]],
+                    thickness: movedWall.thickness,
+                    floor: movedWall.floor,
+                });
+            }
+
+            if (patches.length > 0) {
+                addWalls(patches);
+            } else {
+                normalizeWalls();
+            }
+        } else {
+            normalizeWalls();
+        }
+
         setMovingId(undefined);
         setHoveredId(undefined);
         setConnections([]);
-        normalizeWalls();
-    }, [movingId, mode, normalizeWalls]);
+        setMoveStart(null);
+    }, [movingId, mode, normalizeWalls, addWalls, walls, moveStart, connections]);
 
     useMouseMove((e) => {
         if (e.isDefaultPrevented() || ["slice-wall", "eraser"].includes(mode)) return;
@@ -203,31 +241,9 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
 
             if (Vec2.dist(p0, p1) < movingWall.thickness) return;
 
-            const p0Connection = connections.find(c => c.index == 0);
-            const p1Connection = connections.find(c => c.index == 1);
             const updateStack: [string, Record<string, any>][] = [
                 [movingWall.id, { points: [p0, p1] }]
             ];
-
-            if (p0Connection) {
-                p0Connection.connections.forEach(connection => {
-                    const segment = connection.wall.points;
-                    updateStack.push([
-                        connection.wall.id,
-                        { points: segment.map((point, i) => i == connection.index ? p0 : point) as LineSegment }
-                    ]);
-                });
-            }
-
-            if (p1Connection) {
-                p1Connection.connections.forEach(connection => {
-                    const segment = connection.wall.points;
-                    updateStack.push([
-                        connection.wall.id,
-                        { points: segment.map((point, i) => i == connection.index ? p1 : point) as LineSegment }
-                    ]);
-                });
-            }
 
             const ids = updateStack.map(d => d[0]);
             const patches = updateStack.map(d => d[1]);
