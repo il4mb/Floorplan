@@ -1,13 +1,22 @@
 import { useEngine } from '@/hooks/useEngine';
 import { useGrid } from '@/hooks/useGrid';
 import { Eraser, HandGrab, Slice, SplinePointer } from "lucide-react";
+import { useEditor } from '@/hooks/useEditor';
 import ActionButton from './ActionButton';
 import ObjectGallery from './objects/ObjectGallery';
 import RoomList from './rooms/RoomList';
+import { useMemo } from 'react';
 
 export default function Sidebar() {
-    const { mode, setMode, unit, setUnit } = useEngine();
+    const { mode, setMode, unit, setUnit, selectedWallId } = useEngine();
     const { disabled, setDisabled } = useGrid();
+    const { data, updateWalls } = useEditor();
+
+    const selectedWall = useMemo(() => {
+        if (!selectedWallId) return undefined;
+        return data.walls.find(w => w.id === selectedWallId);
+    }, [data.walls, selectedWallId]);
+
     return (
         <div className='floorplan-sidebar'>
             <div className='fp-panel' style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -52,6 +61,27 @@ export default function Sidebar() {
                     />
                     <span style={{ fontSize: 12 }}>Snap enabled</span>
                 </label>
+
+                <div className="fp-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                    <label className="fp-muted" style={{ fontSize: 12 }}>Wall width (mm)</label>
+                    <input
+                        className="fp-input"
+                        style={{ width: 140 }}
+                        type="number"
+                        min={1}
+                        step={10}
+                        value={selectedWall ? selectedWall.thickness : ''}
+                        placeholder={selectedWallId ? '—' : 'Select wall'}
+                        disabled={!selectedWall}
+                        onChange={(e) => {
+                            if (!selectedWall) return;
+                            const next = Number(e.target.value);
+                            if (!Number.isFinite(next)) return;
+                            updateWalls([selectedWall.id], [{ thickness: Math.max(1, next) }]);
+                        }}
+                        aria-label="Wall width in millimeters"
+                    />
+                </div>
             </div>
 
             <ObjectGallery />

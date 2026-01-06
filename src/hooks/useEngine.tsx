@@ -10,6 +10,10 @@ export type EngineState = Engine & {
     // computations like room detection during active manipulation.
     isInteracting: boolean;
     setIsInteracting: Dispatch<SetStateAction<boolean>>;
+
+    // Currently selected wall (for editing per-wall properties like thickness).
+    selectedWallId: string | null;
+    setSelectedWallId: Dispatch<SetStateAction<string | null>>;
 }
 
 export const EngineContext = createContext<EngineState | undefined>(undefined);

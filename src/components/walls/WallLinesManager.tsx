@@ -25,17 +25,17 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const { snapGrid } = useSnap();
     const { updateWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
-    const { mode, scalePixel, setIsInteracting } = useEngine();
+    const { mode, scalePixel, setIsInteracting, setSelectedWallId } = useEngine();
 
     const [hoveredId, setHoveredId] = useState<string>();
     const [movingId, setMovingId] = useState<string>();
     const [connections, setConnections] = useState<Connection[]>([]);
     const [intersections, setIntersections] = useState<Wall[]>([]);
 
-    const cuttedLines = useMemo<{ id: string, segment: LineSegment }[]>(() => 
+    const cuttedLines = useMemo<{ id: string, segment: LineSegment, thickness: number }[]>(() => 
         walls.map(wall => {
             const segment = Line2.extendSegment(wall.points, -Math.max(Math.abs((wall.thickness / 2) + wall.thickness / 4), 17));
-            return { id: wall.id, segment };
+            return { id: wall.id, segment, thickness: wall.thickness };
         }), 
         [walls]
     );
@@ -48,18 +48,21 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const HOVER_THRESHOLD = useMemo(() => scalePixel(14, 6, 40), [scalePixel]);
 
     const findNearestId = useCallback((world: Point) => {
-        let min = Infinity;
-        let id: string | undefined;
-        
+        let bestScore = Infinity;
+        let bestId: string | undefined;
+
         for (const cWall of cuttedLines) {
             const distance = Line2.getDistanceToSegment(world, cWall.segment);
-            if (distance < min) {
-                min = distance;
-                id = cWall.id;
+            const half = Math.max(0, cWall.thickness / 2);
+            const score = Math.max(0, distance - half);
+            const threshold = half + HOVER_THRESHOLD;
+            if (distance <= threshold && score < bestScore) {
+                bestScore = score;
+                bestId = cWall.id;
             }
         }
-        
-        return min <= HOVER_THRESHOLD ? id : undefined;
+
+        return bestId;
     }, [cuttedLines, HOVER_THRESHOLD]);
 
     const findNearestVertex = useCallback((p: Point, excludeWallId: string, tol: number): Point | null => {
@@ -175,6 +178,8 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         if (!hoveredId || ["slice-wall", "eraser"].includes(mode)) return;
         e.preventDefault();
         e.currentTarget.style.cursor = "move";
+
+        setSelectedWallId(hoveredId);
         const wall = walls.find(wall => wall.id == hoveredId);
         if (!wall) return;
 
@@ -187,7 +192,7 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         setConnections(connections);
         setMovingId(hoveredId);
         setIsInteracting(true);
-    }, [hoveredId, mode, walls]);
+    }, [hoveredId, mode, walls, setSelectedWallId, setIsInteracting]);
 
     useMouseUp(() => {
         if (!movingId || ["slice-wall", "eraser"].includes(mode)) return;

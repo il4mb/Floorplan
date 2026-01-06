@@ -590,7 +590,7 @@ const WallUtils = {
      * Calculate distance between parallel wall center lines
      */
     distanceBetweenParallelWalls(wallA: Wall, wallB: Wall): number {
-        const [a1, a2] = wallA.points;
+        const a1 = wallA.points[0];
         return Line2.getDistanceToSegment(a1, wallB.points);
     },
 };

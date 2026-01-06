@@ -17,7 +17,7 @@ export interface canvasProps {
 }
 export default function Canvas({ }: canvasProps) {
 
-    const { gridSize, view, mode, updateView, scalePixel, setIsInteracting } = useEngine();
+    const { gridSize, view, mode, updateView, scalePixel, setIsInteracting, setSelectedWallId } = useEngine();
     const { addNode, data } = useEditor();
 
     const listeners = useRef<EventListeners>(new Map());
@@ -93,13 +93,18 @@ export default function Canvas({ }: canvasProps) {
         invokeListeners("mousedown", e);
         if (e.isDefaultPrevented()) return;
 
+        // Click on empty space clears selection.
+        if (e.button === 0) {
+            setSelectedWallId(null);
+        }
+
         if (mode === 'pan' && e.button === 0) {
             setIsDragging(true);
             setDragPivot({ x: e.clientX, y: e.clientY });
             e.currentTarget.style.cursor = 'grabbing';
             setIsInteracting(true);
         }
-    }, [mode, invokeListeners, setIsInteracting]);
+    }, [mode, invokeListeners, setIsInteracting, setSelectedWallId]);
 
 
     const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {

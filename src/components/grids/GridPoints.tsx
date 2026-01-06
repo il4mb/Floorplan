@@ -1,9 +1,6 @@
-import { useGrid } from '@/hooks/useGrid';
-
 export interface GridPointsProps {
 }
 export default function GridPoints({  }: GridPointsProps) {
-    const { points } = useGrid();
     return (
         <>
             {/* {points.map(({ x, y }, i) => (

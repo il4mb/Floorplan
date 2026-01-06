@@ -2,23 +2,26 @@ export type ObjectDefinition = {
     kind: string;
     label: string;
     size: {
+        // World-space size in millimeters (world units are mm)
         width: number;
         height: number;
     };
 };
 
 export const OBJECT_DEFINITIONS: ObjectDefinition[] = [
-    { kind: "chair", label: "Chair", size: { width: 60, height: 60 } },
-    { kind: "table", label: "Table", size: { width: 100, height: 60 } },
-    { kind: "sofa", label: "Sofa", size: { width: 140, height: 60 } },
-    { kind: "bed", label: "Bed", size: { width: 160, height: 120 } },
-    { kind: "door", label: "Door", size: { width: 90, height: 18 } },
+    // These were previously authored in "cm-like" values.
+    // Convert to mm so objects match real measurement readouts.
+    { kind: "chair", label: "Chair", size: { width: 600, height: 600 } },
+    { kind: "table", label: "Table", size: { width: 1000, height: 600 } },
+    { kind: "sofa", label: "Sofa", size: { width: 1400, height: 600 } },
+    { kind: "bed", label: "Bed", size: { width: 1600, height: 1200 } },
+    { kind: "door", label: "Door", size: { width: 900, height: 100 } },
 ];
 
 const DEFAULT_DEFINITION: ObjectDefinition = {
     kind: "generic",
     label: "Object",
-    size: { width: 80, height: 80 },
+    size: { width: 800, height: 800 },
 };
 
 export function getObjectDefinition(kind: string | undefined): ObjectDefinition {

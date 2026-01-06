@@ -23,7 +23,7 @@ export function ObjectGlyph({ kind, style }: { kind: ObjectKind; style?: CSSProp
             viewBox="-50 -50 100 100"
             style={style}
             aria-hidden>
-            {renderObjectElements({ kind, width: 90, height: 60, selected: false, strokeWidth: 3 })}
+            {renderObjectElements({ kind, width: 90, height: 60, selected: false, strokeWidth: 5 })}
         </svg>
     );
 }
@@ -41,9 +41,9 @@ export function ObjectSvg({ kind, width, height, selected }: ShapeOptions) {
     );
 }
 
-function renderObjectElements({ kind, width, height, selected }: ShapeOptions) {
+function renderObjectElements({ kind, width, height, selected, strokeWidth }: ShapeOptions) {
     const s = strokeColor(selected);
-    const sw = 3;
+    const sw = strokeWidth ?? 3;
     const fill = "none";
 
     switch (kind) {

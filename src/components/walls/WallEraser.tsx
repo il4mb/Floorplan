@@ -8,6 +8,7 @@ import Poly2, { Polygon } from '@/utils/polygon2d';
 import { Eraser, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useEngine } from '@/hooks/useEngine';
 
 export interface WallEraserProps {
     walls: Wall[];
@@ -19,10 +20,16 @@ export default function WallEraser({ walls }: WallEraserProps) {
     const wallsPolygon = useWallsPolygon();
     const [removeIds, setRemoveIds] = useState<string[]>([]);
 
-    const nearestWalls = useMemo(() => 
-        pointer && walls.filter(wall => Line2.getDistanceToSegment(pointer, wall.points) < 10), 
-        [pointer, walls]
-    );
+    const { scalePixel } = useEngine();
+
+    const nearestWalls = useMemo(() => {
+        if (!pointer) return;
+        const margin = scalePixel(10, 4, 80);
+        return walls.filter(wall => {
+            const d = Line2.getDistanceToSegment(pointer, wall.points);
+            return d <= (wall.thickness / 2) + margin;
+        });
+    }, [pointer, walls, scalePixel]);
 
     const overlaps = useMemo(() => {
         return nearestWalls?.map(wall => {

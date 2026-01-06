@@ -284,7 +284,7 @@ export default function WallDrawer() {
             } else {
                 addWall({
                     points: [startPoint, world],
-                    thickness: 20,
+                    thickness: 200,
                     floor: 0
                 });
                 setStartPoint(world); // Continue drawing from the last point

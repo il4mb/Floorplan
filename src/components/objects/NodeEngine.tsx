@@ -89,6 +89,9 @@ export default function NodeEngine() {
                 const h = def.size.height;
                 const isSelected = selectedId === node.id;
 
+                // Keep object outline visually consistent on screen (world units are mm).
+                const strokeWidth = scalePixel(2.5, 1.25, 10);
+
                 const pose = nodePoses.get(node.id);
                 const coordinate = pose?.coordinate ?? node.coordinate;
                 const rotation = pose?.rotation ?? (node.rotation ?? 0);
@@ -115,7 +118,7 @@ export default function NodeEngine() {
                             }}
                         />
 
-                        <ObjectSvg kind={node.kind} width={w} height={h} selected={isSelected} />
+                        <ObjectSvg kind={node.kind} width={w} height={h} selected={isSelected} strokeWidth={strokeWidth} />
 
                         {(node.kind === 'door' || isSelected) && (
                             <text

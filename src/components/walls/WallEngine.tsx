@@ -1,5 +1,5 @@
 import { useEditor } from '@/hooks/useEditor';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useEngine } from '@/hooks/useEngine';
 import WallDrawer from './WallDrawer';
 import { useWallGeometry, WallEngineContext, WallEngineState } from '@/hooks/useWallEngine';

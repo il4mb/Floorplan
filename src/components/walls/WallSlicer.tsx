@@ -26,12 +26,16 @@ export default function WallSlicer({ walls }: WallSlicerProps) {
     const { splitWall } = useEditor();
     const clearWalls = useClearShortWalls();
     const pointer = usePointer();
-    const { unit } = useEngine();
+    const { unit, scalePixel } = useEngine();
     
-    const nearestWalls = useMemo(() => 
-        pointer && walls.filter(wall => Line2.getDistanceToSegment(pointer, wall.points) < 10), 
-        [pointer, walls]
-    );
+    const nearestWalls = useMemo(() => {
+        if (!pointer) return;
+        const margin = scalePixel(10, 4, 80);
+        return walls.filter(wall => {
+            const d = Line2.getDistanceToSegment(pointer, wall.points);
+            return d <= (wall.thickness / 2) + margin;
+        });
+    }, [pointer, walls, scalePixel]);
     
     const nearest = useMemo(() => {
         if (!nearestWalls || !pointer) return;
@@ -61,13 +65,15 @@ export default function WallSlicer({ walls }: WallSlicerProps) {
 
         const size = nearest.wall.thickness;
         const half = size / 2;
-        const pA = Vec2.add(p, Vec2.add(Vec2.mul(tangent, 4), Vec2.mul(normal, half + 5)));
-        const pB = Vec2.add(p, Vec2.add(Vec2.mul(tangent, -4), Vec2.mul(normal, half + 5)));
-        const pC = Vec2.add(p, Vec2.add(Vec2.mul(tangent, -4), Vec2.mul(normal, -half - 5)));
-        const pD = Vec2.add(p, Vec2.add(Vec2.mul(tangent, 4), Vec2.mul(normal, -half - 5)));
+        const pad = scalePixel(5, 2, 30);
+        const tang = scalePixel(4, 2, 30);
+        const pA = Vec2.add(p, Vec2.add(Vec2.mul(tangent, tang), Vec2.mul(normal, half + pad)));
+        const pB = Vec2.add(p, Vec2.add(Vec2.mul(tangent, -tang), Vec2.mul(normal, half + pad)));
+        const pC = Vec2.add(p, Vec2.add(Vec2.mul(tangent, -tang), Vec2.mul(normal, -half - pad)));
+        const pD = Vec2.add(p, Vec2.add(Vec2.mul(tangent, tang), Vec2.mul(normal, -half - pad)));
 
         return Poly2.reorders([pA, pB, pC, pD]);
-    }, [nearest]);
+    }, [nearest, scalePixel]);
 
     const canSlice = Boolean(nearest?.wall && nearest?.point);
     const wallThickness = nearest?.wall?.thickness || 0;

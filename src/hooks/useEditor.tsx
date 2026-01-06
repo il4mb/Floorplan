@@ -16,6 +16,11 @@ export const useEditor = () => {
     if (!ctx) throw new Error("useEditor should call inside EditorProvider");
     const { data, setData } = ctx;
 
+    const detachFromWall = (n: PlanNode): PlanNode => {
+        const { wallId: _wallId, wallT: _wallT, ...rest } = n;
+        return rest;
+    };
+
     const applyWallNormalization = (prev: PlanData, nextWalls: Wall[]) => {
         const { walls: normalizedWallsRaw, idMap } = normalizeWallsGeometry(nextWalls, nanoid);
 
@@ -31,11 +36,11 @@ export const useEditor = () => {
             if (n.kind !== 'door' || !n.wallId) return n;
             const mappedWallId = idMap[n.wallId] ?? n.wallId;
             const wall = normalizedWalls.find(w => w.id === mappedWallId);
-            if (!wall) return { ...n, wallId: mappedWallId, wallT: undefined };
+            if (!wall) return detachFromWall(n);
 
             // Reproject attachment onto the resulting segment
             const attach = findNearestWallAttachment(n.coordinate, [wall]);
-            if (!attach) return { ...n, wallId: mappedWallId, wallT: undefined };
+            if (!attach) return detachFromWall(n);
             return {
                 ...n,
                 wallId: mappedWallId,
@@ -147,7 +152,7 @@ export const useEditor = () => {
             const cleaned = Object.fromEntries(
                 Object.entries(partial).filter(([, v]) => v !== undefined)
             ) as Partial<RoomMeta>;
-            next[idx] = { ...next[idx], ...cleaned, key };
+            next[idx] = ({ ...next[idx]!, ...cleaned, key } as RoomMeta);
             return { ...prev, roomsMeta: next };
         });
     }, []);
