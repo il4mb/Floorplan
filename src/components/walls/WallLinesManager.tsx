@@ -25,7 +25,7 @@ export interface WallLinesManagerProps {
 export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const { snapGrid } = useSnap();
     const { disabled } = useGrid();
-    const { updateWalls, cleanupShortWalls, normalizeWalls } = useEditor();
+    const { updateWalls, cleanupShortWalls, normalizeWallsDebounced } = useEditor();
     const { clientToWorldPoint } = useCanvas();
     const { mode, scalePixel, setIsInteracting, setSelectedWallId, guidelinesEnabled } = useEngine();
 
@@ -228,8 +228,8 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         cleanupShortWalls(200);
 
         // Ensure intersections/overlaps are actually sliced/merged.
-        normalizeWalls();
-    }, [movingId, mode, setIsInteracting, walls, findNearestVertex, updateWalls, cleanupShortWalls, normalizeWalls]);
+        normalizeWallsDebounced();
+    }, [movingId, mode, setIsInteracting, walls, findNearestVertex, updateWalls, cleanupShortWalls, normalizeWallsDebounced]);
 
     useMouseMove((e) => {
         if (e.isDefaultPrevented() || ["slice-wall", "eraser"].includes(mode)) return;

@@ -1,5 +1,5 @@
 import { Node as PlanNode, PlanData, RoomMeta, Wall } from "@/types";
-import { createContext, Dispatch, SetStateAction, useCallback, useContext, useRef } from "react";
+import { createContext, Dispatch, SetStateAction, useCallback, useContext, useEffect, useRef } from "react";
 import { nanoid } from "nanoid";
 import { normalizeWalls as normalizeWallsGeometry } from "@/utils/wallNormalize";
 import { findNearestWallAttachment } from "@/components/objects/wallAttach";
@@ -24,6 +24,12 @@ export const useEditor = () => {
     // Use a ref so we can cancel any scheduled normalize on unmount.
     // The actual timer is global to keep behavior consistent across components.
     const hasUnmountedRef = useRef(false);
+
+    useEffect(() => {
+        return () => {
+            hasUnmountedRef.current = true;
+        };
+    }, []);
 
     const detachFromWall = (n: PlanNode): PlanNode => {
         const { wallId: _wallId, wallT: _wallT, ...rest } = n;
@@ -131,13 +137,6 @@ export const useEditor = () => {
         }, Math.max(0, delayMs));
     }, [setData]);
 
-    // Mark unmount so the scheduled callback becomes a no-op.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    useCallback(() => {
-        return () => {
-            hasUnmountedRef.current = true;
-        };
-    }, []);
 
     const cleanupShortWalls = useCallback((minLenMm: number = 200) => {
         setData(prev => {

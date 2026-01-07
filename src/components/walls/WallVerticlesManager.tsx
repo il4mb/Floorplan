@@ -23,7 +23,7 @@ export interface Props {
 }
 
 export default function WallVerticesManager({ walls }: Props) {
-    const { updateWalls, cleanupShortWalls, splitWall, normalizeWalls } = useEditor();
+    const { updateWalls, cleanupShortWalls, splitWall, normalizeWallsDebounced } = useEditor();
     const { clientToWorldPoint } = useCanvas();
     const { scalePixel, setIsInteracting, guidelinesEnabled } = useEngine();
     const { snap } = useSnap();
@@ -331,8 +331,8 @@ export default function WallVerticesManager({ walls }: Props) {
         cleanupShortWalls(200);
 
         // Normalize geometry to resolve overlaps and re-merge collinear segments.
-        normalizeWalls();
-    }, [isMoving, setIsInteracting, moving, walls, updateWalls, cleanupShortWalls, scalePixel, findNearestExternalVertex, pendingSlice, disabled, splitWall, normalizeWalls]);
+        normalizeWallsDebounced();
+    }, [isMoving, setIsInteracting, moving, walls, updateWalls, cleanupShortWalls, scalePixel, findNearestExternalVertex, pendingSlice, disabled, splitWall, normalizeWallsDebounced]);
 
     useMouseMove((e) => {
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });

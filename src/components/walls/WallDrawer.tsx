@@ -15,7 +15,7 @@ export default function WallDrawer() {
     const { scalePixel, setMode, unit, guidelinesEnabled } = useEngine();
     const { snap, snapWall } = useSnap();
     const { clientToWorldPoint } = useCanvas();
-    const { addWall, data, cleanupShortWalls, splitWall, normalizeWalls } = useEditor();
+    const { addWall, data, cleanupShortWalls, splitWall, normalizeWallsDebounced } = useEditor();
     const { disabled: snapDisabled } = useGrid();
     const [startPoint, setStartPoint] = useState<Point>();
     const [current, setCurrent] = useState<Point>();
@@ -421,7 +421,8 @@ export default function WallDrawer() {
                     // Cleanup in case the new segment creates tiny joined stubs elsewhere.
                     cleanupShortWalls(200);
                     // Resolve intersections + overlaps created by this new segment.
-                    normalizeWalls();
+                    // Debounced so rapid multi-click drawing normalizes once.
+                    normalizeWallsDebounced();
                     setStartPoint(world); // Continue drawing from the last point
                     setPendingSlice(undefined);
                 }
@@ -430,7 +431,7 @@ export default function WallDrawer() {
             // Right click to cancel
             cancel();
         }
-    }, [startPoint, clientToWorldPoint, snapForDrawing, addWall, cancel, applyOrtho, applyAngleSnap, applyWallParallelSnap, cleanupShortWalls, splitWall, normalizeWalls, applyGuidelineSnap]);
+    }, [startPoint, clientToWorldPoint, snapForDrawing, addWall, cancel, applyOrtho, applyAngleSnap, applyWallParallelSnap, cleanupShortWalls, splitWall, normalizeWallsDebounced, applyGuidelineSnap]);
 
     return (
         <>
