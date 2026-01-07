@@ -8,7 +8,7 @@ import RoomList from './rooms/RoomList';
 import { useMemo } from 'react';
 
 export default function Sidebar() {
-    const { mode, setMode, unit, setUnit, selectedWallId, guidelinesEnabled, setGuidelinesEnabled, wallRuleMode, setWallRuleMode } = useEngine();
+    const { mode, setMode, unit, setUnit, selectedWallId, guidelinesEnabled, setGuidelinesEnabled, wallRuleMode, setWallRuleMode, showWallRules, setShowWallRules } = useEngine();
     const { disabled, setDisabled } = useGrid();
     const { data, updateWalls } = useEditor();
 
@@ -98,6 +98,16 @@ export default function Sidebar() {
                         <option value="both">Both</option>
                     </select>
                 </div>
+
+                <label className="fp-row" style={{ alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <input
+                        type="checkbox"
+                        checked={showWallRules}
+                        onChange={(e) => setShowWallRules(e.target.checked)}
+                        aria-label="Show wall rules"
+                    />
+                    <span style={{ fontSize: 12 }}>Show rules</span>
+                </label>
 
                 <div className="fp-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
                     <label className="fp-muted" style={{ fontSize: 12 }}>Wall width (mm)</label>

@@ -23,6 +23,7 @@ export default function EngineProvider({ children }: EngineProviderProps) {
     const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
     const [guidelinesEnabled, setGuidelinesEnabled] = useState(true);
     const [wallRuleMode, setWallRuleMode] = useState<'inside' | 'outside' | 'both'>('outside');
+    const [showWallRules, setShowWallRules] = useState<boolean>(true);
 
     const updateView = useCallback((patch: Partial<Engine['view']>) => {
         setView(prev => ({ ...prev, ...patch }));
@@ -55,7 +56,9 @@ export default function EngineProvider({ children }: EngineProviderProps) {
         setGuidelinesEnabled,
         wallRuleMode,
         setWallRuleMode,
-    }), [view, gridSize, unit, mode, updateView, scalePixel, isInteracting, selectedWallId, guidelinesEnabled, wallRuleMode]);
+        showWallRules,
+        setShowWallRules,
+    }), [view, gridSize, unit, mode, updateView, scalePixel, isInteracting, selectedWallId, guidelinesEnabled, wallRuleMode, showWallRules]);
 
     const gridValue = useMemo<GridState>(() => ({
         points: gridPoints,

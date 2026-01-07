@@ -25,6 +25,10 @@ export type EngineState = Engine & {
     // Wall rule display mode: which measurements to show
     wallRuleMode: 'inside' | 'outside' | 'both';
     setWallRuleMode: Dispatch<SetStateAction<'inside' | 'outside' | 'both'>>;
+
+    // Toggle showing wall length rules
+    showWallRules: boolean;
+    setShowWallRules: Dispatch<SetStateAction<boolean>>;
 }
 
 export const EngineContext = createContext<EngineState | undefined>(undefined);
