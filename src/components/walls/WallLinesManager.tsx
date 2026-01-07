@@ -3,6 +3,7 @@ import { useEditor } from '@/hooks/useEditor';
 import { useEngine } from '@/hooks/useEngine';
 import { useCreatePortal } from '@/hooks/usePortal';
 import { useSnap } from '@/hooks/useSnap';
+import { useGrid } from '@/hooks/useGrid';
 import { Point, Wall } from '@/types';
 import Line2, { LineSegment } from '@/utils/line2d';
 import Vec2 from '@/utils/vec2d';
@@ -23,6 +24,7 @@ export interface WallLinesManagerProps {
 
 export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const { snapGrid } = useSnap();
+    const { disabled } = useGrid();
     const { updateWalls, cleanupShortWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
     const { mode, scalePixel, setIsInteracting, setSelectedWallId } = useEngine();
@@ -31,6 +33,7 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const [movingId, setMovingId] = useState<string>();
     const [connections, setConnections] = useState<Connection[]>([]);
     const [intersections, setIntersections] = useState<Wall[]>([]);
+    const [guides, setGuides] = useState<{ x?: number; y?: number } | null>(null);
 
     const cuttedLines = useMemo<{ id: string, segment: LineSegment, thickness: number }[]>(() => 
         walls.map(wall => {
@@ -219,6 +222,7 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         setHoveredId(undefined);
         setConnections([]);
         setIsInteracting(false);
+        setGuides(null);
 
         // Remove tiny joined stubs after manipulation completes.
         cleanupShortWalls(200);
@@ -241,9 +245,73 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
             const offset = Vec2.mul(normal, signedDist);
 
             // apply to both endpoints
-            const p0 = Vec2.add(seg[0], offset);
-            const p1 = Vec2.add(seg[1], offset);
+            let p0 = Vec2.add(seg[0], offset);
+            let p1 = Vec2.add(seg[1], offset);
             setIntersections([]);
+
+            // Guideline snap: align moved wall endpoints to nearby existing
+            // endpoints' X/Y (vertical/horizontal guides).
+            if (!disabled) {
+                const tol = scalePixel(12, 1, 2000);
+                let bestDxAbs = Infinity;
+                let bestDyAbs = Infinity;
+                let dxDelta = 0;
+                let dyDelta = 0;
+                let guideX: number | undefined;
+                let guideY: number | undefined;
+
+                for (const w of walls) {
+                    if (w.id === movingWall.id) continue;
+                    for (const end of w.points) {
+                        const dx0 = end.x - p0.x;
+                        const dx1 = end.x - p1.x;
+                        const dy0 = end.y - p0.y;
+                        const dy1 = end.y - p1.y;
+
+                        const dx0Abs = Math.abs(dx0);
+                        const dx1Abs = Math.abs(dx1);
+                        if (dx0Abs < bestDxAbs) {
+                            bestDxAbs = dx0Abs;
+                            dxDelta = dx0;
+                            guideX = end.x;
+                        }
+                        if (dx1Abs < bestDxAbs) {
+                            bestDxAbs = dx1Abs;
+                            dxDelta = dx1;
+                            guideX = end.x;
+                        }
+
+                        const dy0Abs = Math.abs(dy0);
+                        const dy1Abs = Math.abs(dy1);
+                        if (dy0Abs < bestDyAbs) {
+                            bestDyAbs = dy0Abs;
+                            dyDelta = dy0;
+                            guideY = end.y;
+                        }
+                        if (dy1Abs < bestDyAbs) {
+                            bestDyAbs = dy1Abs;
+                            dyDelta = dy1;
+                            guideY = end.y;
+                        }
+                    }
+                }
+
+                const nextGuides: { x?: number; y?: number } = {};
+                if (guideX !== undefined && bestDxAbs <= tol) {
+                    p0 = { ...p0, x: p0.x + dxDelta };
+                    p1 = { ...p1, x: p1.x + dxDelta };
+                    nextGuides.x = guideX;
+                }
+                if (guideY !== undefined && bestDyAbs <= tol) {
+                    p0 = { ...p0, y: p0.y + dyDelta };
+                    p1 = { ...p1, y: p1.y + dyDelta };
+                    nextGuides.y = guideY;
+                }
+
+                setGuides(nextGuides.x !== undefined || nextGuides.y !== undefined ? nextGuides : null);
+            } else {
+                setGuides(null);
+            }
 
             if (Vec2.dist(p0, p1) < movingWall.thickness) return;
 
@@ -264,10 +332,45 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
                 e.currentTarget.style.cursor = "default";
             }
         }
-    }, [movingWall, mode, walls, clientToWorldPoint, updateWalls, findNearestId, connections]);
+    }, [movingWall, mode, walls, clientToWorldPoint, updateWalls, findNearestId, connections, disabled, scalePixel, snapGrid]);
 
     return (
         <>
+            <AnimatePresence>
+                {isMoving && guides?.x !== undefined && (
+                    <motion.line
+                        key="guide-x"
+                        x1={guides.x}
+                        y1={-1000000}
+                        x2={guides.x}
+                        y2={1000000}
+                        stroke="#10b981"
+                        strokeWidth={scalePixel(1.5)}
+                        strokeDasharray={scalePixel(10)}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 0.8 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.1 }}
+                    />
+                )}
+                {isMoving && guides?.y !== undefined && (
+                    <motion.line
+                        key="guide-y"
+                        x1={-1000000}
+                        y1={guides.y}
+                        x2={1000000}
+                        y2={guides.y}
+                        stroke="#10b981"
+                        strokeWidth={scalePixel(1.5)}
+                        strokeDasharray={scalePixel(10)}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 0.8 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.1 }}
+                    />
+                )}
+            </AnimatePresence>
+
             <AnimatePresence>
                 {walls.map((wall) => {
                     const isLineHover = wall.id == hoveredId;

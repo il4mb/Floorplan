@@ -1,7 +1,7 @@
 // src/components/FixedGridCanvas.tsx
 import React, { useRef, useEffect } from 'react';
 import { Point } from '@/types';
-import { GridPoint, useGrid } from '@/hooks/useGrid';
+import { useGrid } from '@/hooks/useGrid';
 
 interface FixedGridCanvasProps {
     width: number;
@@ -15,7 +15,7 @@ interface FixedGridCanvasProps {
 
 const FixedGridCanvas: React.FC<FixedGridCanvasProps> = ({ width, height, zoom, viewOffset, pxPerMm, gridSize = 10 }) => {
 
-    const { setPoints, disabled } = useGrid();
+    const { disabled } = useGrid();
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const rafRef = useRef<number | null>(null);
@@ -38,14 +38,8 @@ const FixedGridCanvas: React.FC<FixedGridCanvasProps> = ({ width, height, zoom, 
             ctx.clearRect(0, 0, width, height);
 
             if (disabled || width <= 0 || height <= 0) {
-                // Grid off: also stop publishing old grid points.
-                setPoints([] as GridPoint[]);
                 return;
             }
-
-            // We no longer publish all grid intersection points (O(n^2) and
-            // unused by snapping). Keeping this empty avoids huge allocations.
-            setPoints([] as GridPoint[]);
 
             // World units are mm; convert to screen pixels.
             const worldScale = zoom * pxPerMm;
@@ -141,7 +135,7 @@ const FixedGridCanvas: React.FC<FixedGridCanvasProps> = ({ width, height, zoom, 
                 rafRef.current = null;
             }
         };
-    }, [width, height, zoom, viewOffset, pxPerMm, gridSize, disabled, setPoints]);
+    }, [width, height, zoom, viewOffset, pxPerMm, gridSize, disabled]);
 
     return (
         <canvas

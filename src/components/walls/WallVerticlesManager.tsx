@@ -3,6 +3,7 @@ import { useEditor } from '@/hooks/useEditor';
 import { useEngine } from '@/hooks/useEngine';
 import { useCreatePortal } from '@/hooks/usePortal';
 import { useSnap } from '@/hooks/useSnap';
+import { useGrid } from '@/hooks/useGrid';
 import { Point, Wall } from '@/types';
 import { LineSegment } from '@/utils/line2d';
 import Poly2 from '@/utils/polygon2d';
@@ -26,9 +27,11 @@ export default function WallVerticesManager({ walls }: Props) {
     const { clientToWorldPoint } = useCanvas();
     const { scalePixel, setIsInteracting } = useEngine();
     const { snap } = useSnap();
+    const { disabled } = useGrid();
     const [moving, setMoving] = useState<Moving[]>([]);
     const [hoveredIndex, setHoveredIndex] = useState(-1);
     const [movingIndex, setMovingIndex] = useState(-1);
+    const [guides, setGuides] = useState<{ x?: number; y?: number } | null>(null);
 
     const isMoving = useMemo(() => moving.length > 0, [moving]);
     const isHovering = useMemo(() => hoveredIndex > -1, [hoveredIndex]);
@@ -134,6 +137,49 @@ export default function WallVerticesManager({ walls }: Props) {
 
     const handleMoveWalls = useCallback((point: Point) => {
         const snapped = snap(point);
+
+        // Guideline snap: align dragged vertex to nearby existing endpoints
+        // (vertical/horizontal guides). Threshold is screen-consistent.
+        let guided = snapped;
+        if (!disabled) {
+            const tol = scalePixel(12, 1, 2000);
+            const movingWallIds = new Set(moving.map((m) => m.wallId));
+
+            let bestDx = Infinity;
+            let bestDy = Infinity;
+            let guideX: number | undefined;
+            let guideY: number | undefined;
+
+            for (const w of walls) {
+                if (movingWallIds.has(w.id)) continue;
+                for (const end of w.points) {
+                    const dx = Math.abs(end.x - snapped.x);
+                    const dy = Math.abs(end.y - snapped.y);
+                    if (dx < bestDx) {
+                        bestDx = dx;
+                        guideX = end.x;
+                    }
+                    if (dy < bestDy) {
+                        bestDy = dy;
+                        guideY = end.y;
+                    }
+                }
+            }
+
+            const nextGuides: { x?: number; y?: number } = {};
+            if (guideX !== undefined && bestDx <= tol) {
+                guided = { ...guided, x: guideX };
+                nextGuides.x = guideX;
+            }
+            if (guideY !== undefined && bestDy <= tol) {
+                guided = { ...guided, y: guideY };
+                nextGuides.y = guideY;
+            }
+            setGuides(nextGuides.x !== undefined || nextGuides.y !== undefined ? nextGuides : null);
+        } else {
+            setGuides(null);
+        }
+
         const ids: string[] = [];
         const patches: Array<Partial<import('@/types').Wall>> = [];
         for (const move of moving) {
@@ -141,12 +187,12 @@ export default function WallVerticesManager({ walls }: Props) {
             if (!wall) continue;
             const wallLineSeg = wall.points;
             const index = move.wallPointIndex;
-            const nextPoints = wallLineSeg.map((x, i) => i == index ? snapped : x) as LineSegment;
+            const nextPoints = wallLineSeg.map((x, i) => i == index ? guided : x) as LineSegment;
             ids.push(wall.id);
             patches.push({ points: nextPoints });
         }
         if (ids.length > 0) updateWalls(ids, patches);
-    }, [snap, moving, walls, updateWalls]);
+    }, [snap, moving, walls, updateWalls, disabled, scalePixel]);
 
     useMouseDown((e) => {
         if (e.isDefaultPrevented()) return;
@@ -208,6 +254,7 @@ export default function WallVerticesManager({ walls }: Props) {
         setMovingIndex(-1);
         setHoveredIndex(-1);
         setIsInteracting(false);
+        setGuides(null);
 
         // Remove tiny joined stubs after manipulation completes.
         cleanupShortWalls(200);
@@ -235,6 +282,41 @@ export default function WallVerticesManager({ walls }: Props) {
 
     return (
         <>
+            <AnimatePresence>
+                {isMoving && guides?.x !== undefined && (
+                    <motion.line
+                        key="guide-x"
+                        x1={guides.x}
+                        y1={-1000000}
+                        x2={guides.x}
+                        y2={1000000}
+                        stroke="#10b981"
+                        strokeWidth={scalePixel(1.5)}
+                        strokeDasharray={scalePixel(10)}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 0.8 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.1 }}
+                    />
+                )}
+                {isMoving && guides?.y !== undefined && (
+                    <motion.line
+                        key="guide-y"
+                        x1={-1000000}
+                        y1={guides.y}
+                        x2={1000000}
+                        y2={guides.y}
+                        stroke="#10b981"
+                        strokeWidth={scalePixel(1.5)}
+                        strokeDasharray={scalePixel(10)}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 0.8 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.1 }}
+                    />
+                )}
+            </AnimatePresence>
+
             <AnimatePresence>
                 {points.map(({ x, y }, i) => {
                     const isPointHovered = hoveredIndex === i;

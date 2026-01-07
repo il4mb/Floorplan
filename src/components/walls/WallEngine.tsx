@@ -8,12 +8,12 @@ import Poly2 from '@/utils/polygon2d';
 import WallLinesManager from './WallLinesManager';
 import WallSlicer from './WallSlicer';
 import WallEraser from './WallEraser';
-
+import WallLengthsOverlay from './WallLengthsOverlay';
 
 export default function WallEngine() {
-
     const { mode } = useEngine();
     const { data } = useEditor();
+
     const walls = useMemo(() => data.walls, [data.walls]);
     const { wallsPolygon } = useWallGeometry(walls);
     const [wMode, setWMode] = useState<WallEngineState['mode']>(undefined);
@@ -28,7 +28,6 @@ export default function WallEngine() {
 
     return (
         <WallEngineContext.Provider value={value}>
-
             <g id='walls'>
                 {walls.map((wall, i) => (
                     <path
@@ -40,24 +39,23 @@ export default function WallEngine() {
                         strokeLinecap="butt"
                         strokeLinejoin="miter"
                         strokeMiterlimit="4"
-                        fillRule="nonzero" />
+                        fillRule="nonzero"
+                    />
                 ))}
+
+                <WallLengthsOverlay walls={walls} />
             </g>
 
-            <WallLinesManager walls={walls} />
-            {mode == "slice-wall" && (
-                <WallSlicer walls={walls} />
-            )}
-            {mode == "eraser" && (
-                <WallEraser walls={walls} />
-            )}
-
-            <WallVerticlesManager walls={walls} />
-            {mode == "wall" && (
+            {mode === 'wall-edit' && (
                 <>
-                    <WallDrawer />
+                    <WallLinesManager walls={walls} />
+                    <WallVerticlesManager walls={walls} />
                 </>
             )}
+
+            {mode == 'slice-wall' && <WallSlicer walls={walls} />}
+            {mode == 'eraser' && <WallEraser walls={walls} />}
+            {mode == 'wall' && <WallDrawer />}
         </WallEngineContext.Provider>
     );
 }

@@ -1,6 +1,6 @@
 import { useEngine } from '@/hooks/useEngine';
 import { useGrid } from '@/hooks/useGrid';
-import { Eraser, HandGrab, Slice, SplinePointer } from "lucide-react";
+import { Eraser, HandGrab, MousePointer2, Slice, SplinePointer } from "lucide-react";
 import { useEditor } from '@/hooks/useEditor';
 import ActionButton from './ActionButton';
 import ObjectGallery from './objects/ObjectGallery';
@@ -22,6 +22,9 @@ export default function Sidebar() {
             <div className='fp-panel' style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <ActionButton active={mode == "wall"} onClick={() => setMode("wall")}>
                     <SplinePointer size={16} />
+                </ActionButton>
+                <ActionButton active={mode == "wall-edit"} onClick={() => setMode("wall-edit")}>
+                    <MousePointer2 size={16} />
                 </ActionButton>
                 <ActionButton active={mode == "pan"} onClick={() => setMode("pan")}>
                     <HandGrab size={16} />
