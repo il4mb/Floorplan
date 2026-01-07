@@ -11,7 +11,7 @@ export interface SnapProviderProps {
 }
 export default function SnapProvider({ children }: SnapProviderProps) {
 
-    const { gridSize, view } = useEngine();
+    const { gridSize, view, scalePixel } = useEngine();
     const { data } = useEditor();
     const { disabled } = useGrid();
 
@@ -23,29 +23,34 @@ export default function SnapProvider({ children }: SnapProviderProps) {
         return pts;
     }, [data.walls]);
 
-    const snapGrid = useCallback((point: Point, threshold = 25): Point => {
+    // threshold is in screen pixels (so it feels consistent across zoom)
+    const snapGrid = useCallback((point: Point, threshold = 18): Point => {
         if (disabled) return point;
+        const t = scalePixel(threshold, 1, 1000);
         const gx = Math.round(point.x / gridSize) * gridSize;
         const gy = Math.round(point.y / gridSize) * gridSize;
         const dx = Math.abs(point.x - gx);
         const dy = Math.abs(point.y - gy);
 
-        if (dx > threshold && dy > threshold) {
+        if (dx > t && dy > t) {
             return point;
         }
         return { x: gx, y: gy };
-    }, [gridSize, disabled]);
+    }, [gridSize, disabled, scalePixel]);
 
 
-    const snapWall = useCallback((point: Point, threshold = 25): Point => {
+    // threshold is in screen pixels
+    const snapWall = useCallback((point: Point, threshold = 18): Point => {
         if (disabled) return point;
         if (wallPoints.length === 0) return point;
+        const t = scalePixel(threshold, 1, 2000);
         const nearest = Vec2.nearest(point, wallPoints);
         if (!nearest.point) return point;
-        return nearest.distance <= threshold ? nearest.point : point;
-    }, [wallPoints, view, disabled]);
+        return nearest.distance <= t ? nearest.point : point;
+    }, [wallPoints, view, disabled, scalePixel]);
 
-    const snap = useCallback((point: Point, threshold = 25): Point => {
+    // threshold is in screen pixels
+    const snap = useCallback((point: Point, threshold = 18): Point => {
         if (disabled) return point;
         const wallSnapped = snapWall(point, threshold);
         if (!Vec2.equal(wallSnapped, point)) return wallSnapped;

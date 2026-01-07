@@ -59,9 +59,11 @@ export default function RoomsOverlay() {
                 const color = meta?.color ?? room.defaultColor;
                 const name = meta?.name ?? room.id;
                 const center = polygonCentroid(room.polygon);
-                const fontSize = scalePixel(14, 10, 22);
-                const subFontSize = scalePixel(12, 9, 18);
-                const strokeW = scalePixel(4, 2, 10);
+                // Keep readable in mm-world by expressing sizes in screen pixels.
+                const fontSize = scalePixel(42);
+                const subFontSize = scalePixel(24);
+                const strokeW = scalePixel(8);
+                const outlineW = scalePixel(2);
 
                 const areaText = formatArea(room.area, unit);
 
@@ -73,7 +75,7 @@ export default function RoomsOverlay() {
                             fillOpacity={0.10}
                             stroke={color}
                             strokeOpacity={0.55}
-                            strokeWidth={2}
+                            strokeWidth={outlineW}
                         />
 
                         <g transform={`translate(${center.x} ${center.y})`}>

@@ -17,7 +17,7 @@ export interface canvasProps {
 }
 export default function Canvas({ }: canvasProps) {
 
-    const { gridSize, view, mode, updateView, scalePixel, setIsInteracting, setSelectedWallId } = useEngine();
+    const { gridSize, view, mode, updateView, scalePixel, pxPerMm } = useEngine();
     const { addNode, data } = useEditor();
 
     const listeners = useRef<EventListeners>(new Map());
@@ -31,9 +31,11 @@ export default function Canvas({ }: canvasProps) {
     const [rect, setRect] = useState<Rect>({ width: 0, height: 0, x: 0, y: 0 });
 
     const viewBox = useMemo(() => `0 0 ${rect.width} ${rect.height}`, [rect]);
+    // World units are millimeters; convert to screen pixels using pxPerMm.
+    const worldScale = useMemo(() => view.zoom * pxPerMm, [view.zoom, pxPerMm]);
     const viewTransform = useMemo(() =>
-        `translate(${-view.x * view.zoom}, ${-view.y * view.zoom}) scale(${view.zoom})`,
-        [view.x, view.y, view.zoom]
+        `translate(${-view.x * worldScale}, ${-view.y * worldScale}) scale(${worldScale})`,
+        [view.x, view.y, worldScale]
     );
 
     const invokeListeners = useCallback((event: EventName, e: MouseEvent) => {
@@ -69,42 +71,37 @@ export default function Canvas({ }: canvasProps) {
         const screenX = x - rect.left;
         const screenY = y - rect.top;
 
-        const worldX = (screenX / view.zoom) + view.x;
-        const worldY = (screenY / view.zoom) + view.y;
+        const s = worldScale || 1;
+        const worldX = (screenX / s) + view.x;
+        const worldY = (screenY / s) + view.y;
 
         return { x: worldX, y: worldY };
-    }, [view.zoom, view.x, view.y]);
+    }, [view.x, view.y, worldScale]);
 
     const worldToScreenPoint = useCallback(({ x, y }: Point): Point => {
-        const screenX = (x - view.x) * view.zoom;
-        const screenY = (y - view.y) * view.zoom;
+        const s = worldScale || 1;
+        const screenX = (x - view.x) * s;
+        const screenY = (y - view.y) * s;
         return { x: screenX, y: screenY };
-    }, [view.zoom, view.x, view.y]);
+    }, [view.x, view.y, worldScale]);
 
     const handleContextMenu = (e: MouseEvent) => {
         e.preventDefault();
         invokeListeners("contextmenu", e);
         setDragPivot(undefined);
         setIsDragging(false);
-        setIsInteracting(false);
     }
 
     const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
         invokeListeners("mousedown", e);
         if (e.isDefaultPrevented()) return;
 
-        // Click on empty space clears selection.
-        if (e.button === 0) {
-            setSelectedWallId(null);
-        }
-
         if (mode === 'pan' && e.button === 0) {
             setIsDragging(true);
             setDragPivot({ x: e.clientX, y: e.clientY });
             e.currentTarget.style.cursor = 'grabbing';
-            setIsInteracting(true);
         }
-    }, [mode, invokeListeners, setIsInteracting, setSelectedWallId]);
+    }, [mode, invokeListeners]);
 
 
     const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -121,8 +118,9 @@ export default function Canvas({ }: canvasProps) {
         if (e.isDefaultPrevented()) return;
 
         if (isDragging && dragPivot) {
-            const deltaX = (dragPivot.x - e.clientX) / view.zoom;
-            const deltaY = (dragPivot.y - e.clientY) / view.zoom;
+            const s = worldScale || 1;
+            const deltaX = (dragPivot.x - e.clientX) / s;
+            const deltaY = (dragPivot.y - e.clientY) / s;
 
             updateView({
                 x: view.x + deltaX,
@@ -130,24 +128,22 @@ export default function Canvas({ }: canvasProps) {
             });
             setDragPivot({ x: e.clientX, y: e.clientY });
         }
-    }, [clientToWorldPoint, invokeListeners, updateView, view, isDragging, dragPivot, mode]);
+    }, [clientToWorldPoint, invokeListeners, updateView, view, isDragging, dragPivot, mode, worldScale]);
 
     const handleMouseUp = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
         setIsDragging(false);
         setDragPivot(undefined);
         invokeListeners("mouseup", e);
-        setIsInteracting(false);
         e.currentTarget.style.cursor = mode === 'pan' ? 'grab' : 'default';
-    }, [mode, invokeListeners, setIsInteracting]);
+    }, [mode, invokeListeners]);
 
     const handleMouseLeave = useCallback((e: MouseEvent) => {
         setPointer(undefined);
         setIsDragging(false);
         setDragPivot(undefined);
         invokeListeners("mouseleave", e);
-        setIsInteracting(false);
         if (e.isDefaultPrevented()) return;
-    }, [clientToWorldPoint, invokeListeners, setIsInteracting]);
+    }, [clientToWorldPoint, invokeListeners]);
 
     const handleMouseEnter = useCallback((e: MouseEvent) => {
         invokeListeners("mouseenter", e);
@@ -168,22 +164,24 @@ export default function Canvas({ }: canvasProps) {
 
         // Apply zoom with exponential curve for smoother experience
         const zoomFactor = 1 + delta;
-        const newZoom = Math.max(0.1, Math.min(10, view.zoom * zoomFactor));
+        const newZoom = Math.max(0.1, Math.min(5, view.zoom * zoomFactor));
 
         // Calculate zoom center in world coordinates
-        const worldX = (mouseX / view.zoom) + view.x;
-        const worldY = (mouseY / view.zoom) + view.y;
+        const s = worldScale || 1;
+        const worldX = (mouseX / s) + view.x;
+        const worldY = (mouseY / s) + view.y;
 
         // Adjust view to zoom around mouse position
-        const newX = worldX - (mouseX / newZoom);
-        const newY = worldY - (mouseY / newZoom);
+        const newS = newZoom * pxPerMm;
+        const newX = worldX - (mouseX / newS);
+        const newY = worldY - (mouseY / newS);
 
         updateView({
             zoom: newZoom,
             x: newX,
             y: newY
         });
-    }, [view, updateView, invokeListeners]);
+    }, [view, updateView, invokeListeners, worldScale, pxPerMm]);
 
     const handleDragOver = useCallback((e: React.DragEvent<SVGSVGElement>) => {
         // Allow drop
@@ -227,15 +225,16 @@ export default function Canvas({ }: canvasProps) {
 
     useEffect(() => {
         if (rect.width > 0 && rect.height > 0 && !isInitialized) {
-            const centerX = -rect.width / (2 * view.zoom);
-            const centerY = -rect.height / (2 * view.zoom);
+            const s = worldScale || 1;
+            const centerX = -rect.width / (2 * s);
+            const centerY = -rect.height / (2 * s);
             updateView({
                 x: centerX,
                 y: centerY
             });
             setIsInitialized(true);
         }
-    }, [rect, view.zoom, isInitialized]);
+    }, [rect, worldScale, isInitialized]);
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -271,6 +270,7 @@ export default function Canvas({ }: canvasProps) {
                     height={rect.height}
                     zoom={view.zoom}
                     gridSize={gridSize}
+                    pxPerMm={pxPerMm}
                     viewOffset={view} />
                 <CanvasPortal>
                     <svg ref={svgRef}

@@ -9,6 +9,10 @@ export interface EngineProviderProps {
 }
 export default function EngineProvider({ children }: EngineProviderProps) {
 
+    // World units are millimeters, but the original editor logic assumed
+    // "world ~= screen pixels". This keeps the old visual feel: 1m = 100px.
+    const pxPerMm = 0.1;
+
     const [mode, setMode] = useState<string>('pan');
     const [view, setView] = useState<Engine['view']>({ zoom: 1, x: 0, y: 0 });
     const [gridSize, setGridSize] = useState<Engine['gridSize']>(10);
@@ -22,8 +26,11 @@ export default function EngineProvider({ children }: EngineProviderProps) {
         setView(prev => ({ ...prev, ...patch }));
     }, []);
 
+    // Convert a screen-pixel size into world millimeters at the current zoom.
     const scalePixel = useCallback((pixel: number, min = 1, max = 100) => {
-        return Math.min(Math.max(pixel / view.zoom, min), max);
+        const denom = view.zoom * pxPerMm;
+        const world = denom > 0 ? (pixel / denom) : pixel;
+        return Math.min(Math.max(world, min), max);
     }, [view.zoom]);
 
 
@@ -36,6 +43,7 @@ export default function EngineProvider({ children }: EngineProviderProps) {
         setGridSize,
         setUnit,
         setMode,
+        pxPerMm,
         scalePixel,
         isInteracting,
         setIsInteracting,

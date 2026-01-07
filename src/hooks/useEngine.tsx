@@ -5,6 +5,9 @@ export type EngineState = Engine & {
     setGridSize: Dispatch<SetStateAction<number>>;
     setUnit: Dispatch<SetStateAction<Engine['unit']>>;
     setMode: Dispatch<SetStateAction<Engine['mode']>>;
+    // Screen pixels per millimeter (world units are mm). Use to keep the old
+    // px-based feel while the world model stays in mm.
+    pxPerMm: number;
     scalePixel: (pixel: number, min?: number, max?: number) => number;
     // Global UI interaction flag (e.g. dragging). Used to pause expensive
     // computations like room detection during active manipulation.

@@ -23,18 +23,19 @@ export function ObjectGlyph({ kind, style }: { kind: ObjectKind; style?: CSSProp
             viewBox="-50 -50 100 100"
             style={style}
             aria-hidden>
-            {renderObjectElements({ kind, width: 90, height: 60, selected: false, strokeWidth: 5 })}
+            {renderObjectElements({ kind, width: 90, height: 60, selected: false, strokeWidth: 7 })}
         </svg>
     );
 }
 
-export function ObjectSvg({ kind, width, height, selected }: ShapeOptions) {
+export function ObjectSvg({ kind, width, height, selected, strokeWidth }: ShapeOptions) {
     return (
         <>
             {renderObjectElements({
                 kind,
                 width,
                 height,
+                ...(strokeWidth === undefined ? {} : { strokeWidth }),
                 ...(selected === undefined ? {} : { selected }),
             })}
         </>

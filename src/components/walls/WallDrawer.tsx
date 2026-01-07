@@ -14,7 +14,7 @@ export default function WallDrawer() {
     const { scalePixel, setMode, unit } = useEngine();
     const { snap, snapWall } = useSnap();
     const { clientToWorldPoint } = useCanvas();
-    const { addWall, data } = useEditor();
+    const { addWall, data, cleanupShortWalls } = useEditor();
     const [startPoint, setStartPoint] = useState<Point>();
     const [current, setCurrent] = useState<Point>();
 
@@ -282,18 +282,25 @@ export default function WallDrawer() {
             if (!startPoint) {
                 setStartPoint(world);
             } else {
-                addWall({
-                    points: [startPoint, world],
-                    thickness: 200,
-                    floor: 0
-                });
-                setStartPoint(world); // Continue drawing from the last point
+                const thickness = 200;
+                const len = Vec2.dist(startPoint, world);
+                const minLen = Math.max(200, thickness);
+                if (len >= minLen) {
+                    addWall({
+                        points: [startPoint, world],
+                        thickness,
+                        floor: 0
+                    });
+                    // Cleanup in case the new segment creates tiny joined stubs elsewhere.
+                    cleanupShortWalls(200);
+                    setStartPoint(world); // Continue drawing from the last point
+                }
             }
         } else {
             // Right click to cancel
             cancel();
         }
-    }, [startPoint, clientToWorldPoint, snap, addWall, cancel, applyOrtho, applyAngleSnap, applyWallParallelSnap]);
+    }, [startPoint, clientToWorldPoint, snap, addWall, cancel, applyOrtho, applyAngleSnap, applyWallParallelSnap, cleanupShortWalls]);
 
     return (
         <>

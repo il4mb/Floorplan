@@ -23,7 +23,7 @@ export interface WallLinesManagerProps {
 
 export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const { snapGrid } = useSnap();
-    const { updateWalls } = useEditor();
+    const { updateWalls, cleanupShortWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
     const { mode, scalePixel, setIsInteracting, setSelectedWallId } = useEngine();
 
@@ -219,7 +219,10 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         setHoveredId(undefined);
         setConnections([]);
         setIsInteracting(false);
-    }, [movingId, mode, setIsInteracting, walls, findNearestVertex, updateWalls]);
+
+        // Remove tiny joined stubs after manipulation completes.
+        cleanupShortWalls(200);
+    }, [movingId, mode, setIsInteracting, walls, findNearestVertex, updateWalls, cleanupShortWalls]);
 
     useMouseMove((e) => {
         if (e.isDefaultPrevented() || ["slice-wall", "eraser"].includes(mode)) return;
@@ -280,7 +283,7 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
                             x2={points[1].x}
                             y2={points[1].y}
                             stroke={isMoving ? "#f59e0b" : isLineHover ? '#10b981' : '#888'}
-                            strokeWidth={isMoving ? 10 : (isLineHover ? 12 : 8)}
+                            strokeWidth={isMoving ? scalePixel(18, 8, 60) : (isLineHover ? scalePixel(22, 10, 70) : scalePixel(14, 6, 50))}
                             strokeLinecap="round"
                             strokeMiterlimit={5}
                             strokeLinejoin="round"

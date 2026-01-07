@@ -90,7 +90,7 @@ export default function NodeEngine() {
                 const isSelected = selectedId === node.id;
 
                 // Keep object outline visually consistent on screen (world units are mm).
-                const strokeWidth = scalePixel(2.5, 1.25, 10);
+                const strokeWidth = scalePixel(30);
 
                 const pose = nodePoses.get(node.id);
                 const coordinate = pose?.coordinate ?? node.coordinate;
@@ -123,10 +123,10 @@ export default function NodeEngine() {
                         {(node.kind === 'door' || isSelected) && (
                             <text
                                 x={0}
-                                y={-h / 2 - 10}
+                                y={-h / 2 - scalePixel(14)}
                                 textAnchor="middle"
                                 fontFamily="Figtree, sans-serif"
-                                fontSize={12}
+                                fontSize={scalePixel(14)}
                                 fill="#262626"
                                 opacity={0.85}>
                                 {def.label}

@@ -22,7 +22,7 @@ export interface Props {
 }
 
 export default function WallVerticesManager({ walls }: Props) {
-    const { updateWalls } = useEditor();
+    const { updateWalls, cleanupShortWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
     const { scalePixel, setIsInteracting } = useEngine();
     const { snap } = useSnap();
@@ -208,7 +208,10 @@ export default function WallVerticesManager({ walls }: Props) {
         setMovingIndex(-1);
         setHoveredIndex(-1);
         setIsInteracting(false);
-    }, [isMoving, setIsInteracting, movingIndex, points, moving, walls, updateWalls]);
+
+        // Remove tiny joined stubs after manipulation completes.
+        cleanupShortWalls(200);
+    }, [isMoving, setIsInteracting, movingIndex, points, moving, walls, updateWalls, cleanupShortWalls]);
 
     useMouseMove((e) => {
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });

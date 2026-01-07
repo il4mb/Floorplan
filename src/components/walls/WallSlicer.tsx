@@ -1,7 +1,6 @@
 import { useMouseDown, usePointer } from '@/hooks/useCanvas';
 import { useEditor } from '@/hooks/useEditor';
 import { useCreatePortal } from '@/hooks/usePortal';
-import { useClearShortWalls } from '@/hooks/useWallEngine';
 import { Point, Wall } from '@/types';
 import Line2 from '@/utils/line2d';
 import Poly2 from '@/utils/polygon2d';
@@ -23,8 +22,7 @@ export interface WallSlicerProps {
 }
 
 export default function WallSlicer({ walls }: WallSlicerProps) {
-    const { splitWall } = useEditor();
-    const clearWalls = useClearShortWalls();
+    const { splitWall, cleanupShortWalls } = useEditor();
     const pointer = usePointer();
     const { unit, scalePixel } = useEngine();
     
@@ -176,8 +174,8 @@ export default function WallSlicer({ walls }: WallSlicerProps) {
         if (t <= 0 || t >= 1) return;
 
         splitWall(wallId, t);
-        clearWalls();
-    }, [nearest, splitWall, clearWalls]);
+        cleanupShortWalls(200);
+    }, [nearest, splitWall, cleanupShortWalls]);
 
     return (
         <>

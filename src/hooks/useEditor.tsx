@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import { normalizeWalls as normalizeWallsGeometry } from "@/utils/wallNormalize";
 import { findNearestWallAttachment } from "@/components/objects/wallAttach";
 import Vec2 from "@/utils/vec2d";
+import Line2 from "@/utils/line2d";
 export type EditorState = {
     data: PlanData;
     setData: Dispatch<SetStateAction<PlanData>>
@@ -110,6 +111,65 @@ export const useEditor = () => {
         setData(prev => applyWallNormalization(prev, prev.walls));
     }, []);
 
+    const cleanupShortWalls = useCallback((minLenMm: number = 200) => {
+        setData(prev => {
+            const walls = prev.walls;
+            if (!walls || walls.length === 0) return prev;
+
+            const removeIds = new Set<string>();
+
+            for (const w of walls) {
+                const a = w.points?.[0];
+                const b = w.points?.[1];
+                if (!a || !b) {
+                    removeIds.add(w.id);
+                    continue;
+                }
+
+                const len = Vec2.dist(a, b);
+                const minLenLocal = Math.max(minLenMm, w.thickness);
+                if (len >= minLenLocal) continue;
+
+                // Only remove short walls that are effectively "joined" to other
+                // geometry within about the wall width.
+                let isJoined = false;
+                for (const other of walls) {
+                    if (other.id === w.id) continue;
+                    const oa = other.points?.[0];
+                    const ob = other.points?.[1];
+                    if (!oa || !ob) continue;
+
+                    const tol = Math.max(w.thickness, other.thickness) * 0.5;
+
+                    // Endpoint-to-endpoint join.
+                    if (
+                        Vec2.dist(a, oa) <= tol ||
+                        Vec2.dist(a, ob) <= tol ||
+                        Vec2.dist(b, oa) <= tol ||
+                        Vec2.dist(b, ob) <= tol
+                    ) {
+                        isJoined = true;
+                        break;
+                    }
+
+                    // Endpoint-to-segment join (T-junction / overlap proximity).
+                    if (Line2.getDistanceToSegment(a, other.points) <= tol || Line2.getDistanceToSegment(b, other.points) <= tol) {
+                        isJoined = true;
+                        break;
+                    }
+                }
+
+                if (isJoined) removeIds.add(w.id);
+            }
+
+            if (removeIds.size === 0) return prev;
+            return {
+                ...prev,
+                walls: prev.walls.filter(w => !removeIds.has(w.id)),
+            };
+        });
+    }, [setData]);
+
 
     const removeWalls = useCallback((id: string | string[]) => {
         const ids = Array.isArray(id) ? id : [id];
@@ -165,6 +225,7 @@ export const useEditor = () => {
         updateWall,
         updateWalls,
         normalizeWalls,
+        cleanupShortWalls,
         removeWalls,
         splitWall,
         addNode,
