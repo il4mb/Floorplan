@@ -9,13 +9,14 @@ import { findNearestWallAttachment, getWallAngleDeg, pointOnWall } from "./wallA
 import { ObjectSvg } from "./objectShapes";
 
 export default function NodeEngine() {
-    const { data, updateNode } = useEditor();
+    const { data, updateNode, removeNode } = useEditor();
     const { clientToWorldPoint } = useCanvas();
-    const { scalePixel } = useEngine();
+    const { scalePixel, mode } = useEngine();
     const { snapGrid } = useSnap();
 
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [dragging, setDragging] = useState<{ id: string; offset: Point } | null>(null);
+    const [hoveredId, setHoveredId] = useState<string | null>(null);
 
     const walls = useMemo(() => data.walls ?? [], [data.walls]);
     const nodes = useMemo(() => data.node ?? [], [data.node]);
@@ -81,6 +82,14 @@ export default function NodeEngine() {
         e.currentTarget.style.cursor = "default";
     }, [dragging]);
 
+    const handleNodeClick = (nodeId: string, e: React.MouseEvent) => {
+        if (mode === 'delete') {
+            e.preventDefault();
+            e.stopPropagation();
+            removeNode(nodeId);
+        }
+    };
+
     return (
         <g id="nodes">
             {nodes.map((node) => {
@@ -88,6 +97,8 @@ export default function NodeEngine() {
                 const w = def.size.width;
                 const h = def.size.height;
                 const isSelected = selectedId === node.id;
+                const isHovered = hoveredId === node.id;
+                const isDeleteMode = mode === 'delete';
 
                 // Keep object outline visually consistent on screen (world units are mm).
                 const strokeWidth = scalePixel(30);
@@ -99,20 +110,30 @@ export default function NodeEngine() {
                 return (
                     <g
                         key={node.id}
-                        transform={`translate(${coordinate.x} ${coordinate.y}) rotate(${rotation})`}>
+                        transform={`translate(${coordinate.x} ${coordinate.y}) rotate(${rotation})`}
+                        style={{ opacity: isDeleteMode && isHovered ? 0.5 : 1 }}>
                         {/* Hit target: captures mouse down so walls don't steal drags */}
                         <rect
                             x={-(w / 2) - (node.kind === 'door' ? scalePixel(22) : scalePixel(10))}
                             y={-(h / 2) - (node.kind === 'door' ? scalePixel(22) : scalePixel(10))}
                             width={w + (node.kind === 'door' ? scalePixel(44) : scalePixel(20))}
                             height={h + (node.kind === 'door' ? scalePixel(44) : scalePixel(20))}
-                            fill="rgba(0,0,0,0)"
-                            stroke="rgba(0,0,0,0)"
-                            style={{ cursor: 'move' }}
+                            fill={isDeleteMode && isHovered ? "rgba(239,68,68,0.2)" : "rgba(0,0,0,0)"}
+                            stroke={isDeleteMode && isHovered ? "#ef4444" : "rgba(0,0,0,0)"}
+                            strokeWidth={isDeleteMode && isHovered ? scalePixel(4) : 0}
+                            style={{ cursor: isDeleteMode ? 'pointer' : 'move' }}
+                            onMouseEnter={() => setHoveredId(node.id)}
+                            onMouseLeave={() => setHoveredId(null)}
                             onMouseDown={(e) => {
                                 if (e.button !== 0) return;
                                 e.preventDefault();
                                 e.stopPropagation();
+                                
+                                if (isDeleteMode) {
+                                    handleNodeClick(node.id, e);
+                                    return;
+                                }
+                                
                                 const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
                                 beginDrag(node.id, world);
                             }}

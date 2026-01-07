@@ -8,43 +8,85 @@ export interface WallLengthsOverlayProps {
     walls: Wall[];
 }
 
+interface LengthItem {
+    id: string;
+    pos: { x: number; y: number };
+    rot: number;
+    text: string;
+    side: 'inside' | 'outside';
+}
+
 export default function WallLengthsOverlay({ walls }: WallLengthsOverlayProps) {
-    const { unit, scalePixel } = useEngine();
+    const { unit, scalePixel, wallRuleMode } = useEngine();
 
     const items = useMemo(() => {
-        return walls
-            .map((w) => {
-                const a = w.points?.[0];
-                const b = w.points?.[1];
-                if (!a || !b) return null;
+        const result: LengthItem[] = [];
+        
+        for (const w of walls) {
+            const a = w.points?.[0];
+            const b = w.points?.[1];
+            if (!a || !b) continue;
 
-                const len = Vec2.dist(a, b);
-                if (len < 50) return null;
+            const len = Vec2.dist(a, b);
+            if (len < 50) continue;
 
-                const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-                const dx = b.x - a.x;
-                const dy = b.y - a.y;
-                const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+            const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
 
-                const segLen = Math.hypot(dx, dy) || 1;
-                const nx = -dy / segLen;
-                const ny = dx / segLen;
+            const segLen = Math.hypot(dx, dy) || 1;
+            const nx = -dy / segLen;
+            const ny = dx / segLen;
 
-                const offset = (w.thickness ?? 0) / 2 + scalePixel(10);
-                const pos = { x: mid.x + nx * offset, y: mid.y + ny * offset };
+            // Keep text upright.
+            const rot = angle > 90 || angle < -90 ? angle + 180 : angle;
+            const text = formatLength(len, unit);
 
-                // Keep text upright.
-                const rot = angle > 90 || angle < -90 ? angle + 180 : angle;
+            // Calculate inside and outside positions
+            const baseOffset = (w.thickness ?? 0) / 2 + scalePixel(10);
+            
+            // Outside position (positive normal direction)
+            const outsidePos = { x: mid.x + nx * baseOffset, y: mid.y + ny * baseOffset };
+            // Inside position (negative normal direction)
+            const insidePos = { x: mid.x - nx * baseOffset, y: mid.y - ny * baseOffset };
 
-                return {
-                    id: w.id,
-                    pos,
+            if (wallRuleMode === 'outside' || wallRuleMode === 'both') {
+                result.push({
+                    id: `${w.id}-outside`,
+                    pos: outsidePos,
                     rot,
-                    text: formatLength(len, unit),
-                };
-            })
-            .filter((x): x is NonNullable<typeof x> => Boolean(x));
-    }, [walls, unit, scalePixel]);
+                    text,
+                    side: 'outside'
+                });
+            }
+
+            if (wallRuleMode === 'inside') {
+                result.push({
+                    id: `${w.id}-inside`,
+                    pos: insidePos,
+                    rot,
+                    text,
+                    side: 'inside'
+                });
+            }
+
+            if (wallRuleMode === 'both') {
+                // Only add inside if it would be different (for 'both' mode)
+                // Since inside/outside measurements are the same for centerline,
+                // we show inside only when 'both' is selected
+                result.push({
+                    id: `${w.id}-inside`,
+                    pos: insidePos,
+                    rot,
+                    text,
+                    side: 'inside'
+                });
+            }
+        }
+
+        return result;
+    }, [walls, unit, scalePixel, wallRuleMode]);
 
     const fontSize = scalePixel(12);
     const outline = scalePixel(4);
@@ -61,7 +103,7 @@ export default function WallLengthsOverlay({ walls }: WallLengthsOverlayProps) {
                         fontFamily="Figtree, sans-serif"
                         fontWeight={800}
                         fontSize={fontSize}
-                        fill="#444444"
+                        fill={it.side === 'inside' ? '#2563eb' : '#444444'}
                         stroke="#ffffff"
                         strokeWidth={outline}
                         paintOrder="stroke"

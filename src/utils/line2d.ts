@@ -1,5 +1,7 @@
-import { Point } from "@/types";
+import { Point, LineSegment } from "@/types";
 import Vec2 from "./vec2d";
+
+export type { LineSegment };
 
 export interface LineIntersectionResult {
     point: Point;
@@ -8,8 +10,6 @@ export interface LineIntersectionResult {
     parallel: boolean;
     coincident: boolean;
 }
-
-export type LineSegment = [Point, Point];
 
 const EPSILON = 1e-9;
 

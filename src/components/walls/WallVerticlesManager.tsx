@@ -12,6 +12,7 @@ import WallUtils from '@/utils/wallUtils';
 import { useCallback, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Move, MousePointer2, CornerDownLeft, Link, Unlink } from 'lucide-react';
+import { useWallsPolygon } from '@/hooks/useWallEngine';
 
 type Moving = {
     wallId: Wall['id'];
@@ -28,20 +29,104 @@ export default function WallVerticesManager({ walls }: Props) {
     const { scalePixel, setIsInteracting, guidelinesEnabled } = useEngine();
     const { snap } = useSnap();
     const { disabled } = useGrid();
+    const wallsPolygon = useWallsPolygon();
+    
     const [moving, setMoving] = useState<Moving[]>([]);
     const [hoveredIndex, setHoveredIndex] = useState(-1);
     const [movingIndex, setMovingIndex] = useState(-1);
     const [guides, setGuides] = useState<{ x?: number; y?: number } | null>(null);
     const [pendingSlice, setPendingSlice] = useState<{ wallId: string; t: number } | null>(null);
+    
+    // Bevel/chamfer wall state - a wall that connects two other walls in a chain
+    type BevelWall = {
+        wallId: string;                  // The bevel wall itself
+        endpoint0Wall: { id: string; otherEnd: Point };  // Wall connected at endpoint 0
+        endpoint1Wall: { id: string; otherEnd: Point };  // Wall connected at endpoint 1
+    };
+    const [hoveredBevel, setHoveredBevel] = useState<BevelWall | null>(null);
+    const [movingBevel, setMovingBevel] = useState<BevelWall | null>(null);
+    const [bevelDragStart, setBevelDragStart] = useState<Point | null>(null);
 
     const isMoving = useMemo(() => moving.length > 0, [moving]);
+    const isMovingBevel = useMemo(() => movingBevel !== null, [movingBevel]);
     const isHovering = useMemo(() => hoveredIndex > -1, [hoveredIndex]);
     const movingCount = moving.length;
     const CLICK_THRESHOLD = useMemo(() => scalePixel(15), [scalePixel]);
+    const BEVEL_THRESHOLD = useMemo(() => scalePixel(20, 8, 50), [scalePixel]);
 
     const points = useMemo(() => {
         return Poly2.removeDuplicate(walls.map(wall => wall.points).flat());
     }, [walls]);
+
+    // Detect bevel/chamfer walls - walls where:
+    // - Each endpoint connects to EXACTLY ONE other wall
+    // - Forms a "chain" pattern (not a "star" junction)
+    const bevelWalls = useMemo(() => {
+        const bevels: BevelWall[] = [];
+        const tolerance = 5;
+        
+        for (const wall of walls) {
+            const [p0, p1] = wall.points;
+            
+            // Find walls connected at each endpoint
+            const connAtP0 = walls.filter(w => {
+                if (w.id === wall.id) return false;
+                return Vec2.dist(w.points[0], p0) < tolerance || Vec2.dist(w.points[1], p0) < tolerance;
+            });
+            
+            const connAtP1 = walls.filter(w => {
+                if (w.id === wall.id) return false;
+                return Vec2.dist(w.points[0], p1) < tolerance || Vec2.dist(w.points[1], p1) < tolerance;
+            });
+            
+            // Must have exactly 1 connection at each endpoint (chain pattern)
+            if (connAtP0.length !== 1 || connAtP1.length !== 1) continue;
+            
+            const wall0 = connAtP0[0]!;
+            const wall1 = connAtP1[0]!;
+            
+            // Get the "other end" of each connected wall (the end that's NOT at our junction)
+            const otherEnd0 = Vec2.dist(wall0.points[0], p0) < tolerance ? wall0.points[1] : wall0.points[0];
+            const otherEnd1 = Vec2.dist(wall1.points[0], p1) < tolerance ? wall1.points[1] : wall1.points[0];
+            
+            bevels.push({
+                wallId: wall.id,
+                endpoint0Wall: { id: wall0.id, otherEnd: otherEnd0 },
+                endpoint1Wall: { id: wall1.id, otherEnd: otherEnd1 }
+            });
+        }
+        
+        return bevels;
+    }, [walls]);
+
+    // Find nearest bevel wall to a point
+    const findNearestBevelWall = useCallback((p: Point): BevelWall | null => {
+        let best: BevelWall | null = null;
+        let bestDist = Infinity;
+        
+        for (const bevel of bevelWalls) {
+            const wall = walls.find(w => w.id === bevel.wallId);
+            if (!wall) continue;
+            
+            // Distance to the line segment
+            const [a, b] = wall.points;
+            const ab = Vec2.sub(b, a);
+            const ap = Vec2.sub(p, a);
+            const lenSq = Vec2.dot(ab, ab);
+            if (lenSq < 1e-9) continue;
+            
+            const t = Math.max(0, Math.min(1, Vec2.dot(ap, ab) / lenSq));
+            const proj = Vec2.add(a, Vec2.mul(ab, t));
+            const dist = Vec2.dist(p, proj);
+            
+            if (dist < bestDist && dist <= BEVEL_THRESHOLD) {
+                bestDist = dist;
+                best = bevel;
+            }
+        }
+        
+        return best;
+    }, [bevelWalls, walls, BEVEL_THRESHOLD]);
 
     const findNearestExternalVertex = useCallback((p: Point, excludeWallIds: Set<string>, tol: number): Point | null => {
         let best: Point | null = null;
@@ -266,7 +351,20 @@ export default function WallVerticesManager({ walls }: Props) {
     useMouseDown((e) => {
         if (e.isDefaultPrevented()) return;
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
+        
+        // Check for bevel wall first (but not if too close to a vertex)
         const nearest = Vec2.nearest(world, points);
+        const nearestBevel = findNearestBevelWall(world);
+        
+        if (nearestBevel && nearest.distance >= CLICK_THRESHOLD * 0.5) {
+            e.preventDefault();
+            e.currentTarget.style.cursor = "move";
+            setMovingBevel(nearestBevel);
+            setBevelDragStart(world);
+            setIsInteracting(true);
+            return;
+        }
+        
         if (nearest.distance < CLICK_THRESHOLD) {
             e.preventDefault();
             e.currentTarget.style.cursor = "move";
@@ -279,9 +377,20 @@ export default function WallVerticesManager({ walls }: Props) {
             setMovingIndex(nearest.index);
             setIsInteracting(true);
         }
-    }, [points, CLICK_THRESHOLD, clientToWorldPoint, walls]);
+    }, [points, CLICK_THRESHOLD, clientToWorldPoint, walls, findNearestBevelWall]);
 
     useMouseUp(() => {
+        // Handle bevel edge drag end
+        if (isMovingBevel) {
+            setMovingBevel(null);
+            setBevelDragStart(null);
+            setHoveredBevel(null);
+            setIsInteracting(false);
+            cleanupShortWalls(200);
+            normalizeWallsDebounced();
+            return;
+        }
+        
         if (!isMoving) return;
 
         // Auto-join: if the dragged vertex ends near another existing vertex
@@ -332,27 +441,131 @@ export default function WallVerticesManager({ walls }: Props) {
 
         // Normalize geometry to resolve overlaps and re-merge collinear segments.
         normalizeWallsDebounced();
-    }, [isMoving, setIsInteracting, moving, walls, updateWalls, cleanupShortWalls, scalePixel, findNearestExternalVertex, pendingSlice, disabled, splitWall, normalizeWallsDebounced]);
+    }, [isMoving, isMovingBevel, setIsInteracting, moving, walls, updateWalls, cleanupShortWalls, scalePixel, findNearestExternalVertex, pendingSlice, disabled, splitWall, normalizeWallsDebounced]);
 
     useMouseMove((e) => {
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
+        
+        // Handle bevel wall dragging - slides along parent wall LINES (extended)
+        if (isMovingBevel && movingBevel && bevelDragStart) {
+            e.preventDefault();
+            e.currentTarget.style.cursor = "move";
+            
+            const bevelWall = walls.find(w => w.id === movingBevel.wallId);
+            const wall0 = walls.find(w => w.id === movingBevel.endpoint0Wall.id);
+            const wall1 = walls.find(w => w.id === movingBevel.endpoint1Wall.id);
+            if (!bevelWall || !wall0 || !wall1) return;
+            
+            // Current bevel endpoints
+            const [bp0, bp1] = bevelWall.points;
+            
+            // The "fixed" endpoints of the parent walls (the far ends, not at bevel)
+            const fixedEnd0 = movingBevel.endpoint0Wall.otherEnd;
+            const fixedEnd1 = movingBevel.endpoint1Wall.otherEnd;
+            
+            // Calculate bevel perpendicular direction for drag
+            const bevelDir = Vec2.normalize(Vec2.sub(bp1, bp0));
+            const bevelPerp = Vec2.perp(bevelDir);
+            
+            // How far did mouse move perpendicular to bevel?
+            const delta = Vec2.sub(world, bevelDragStart);
+            const perpDist = Vec2.dot(delta, bevelPerp);
+            
+            // Move bevel endpoints perpendicular to bevel direction
+            const movedP0 = Vec2.add(bp0, Vec2.mul(bevelPerp, perpDist));
+            const movedP1 = Vec2.add(bp1, Vec2.mul(bevelPerp, perpDist));
+            
+            // Project moved points onto the INFINITE LINES of parent walls
+            const projectOntoInfiniteLine = (p: Point, lineStart: Point, lineEnd: Point): Point => {
+                const ab = Vec2.sub(lineEnd, lineStart);
+                const ap = Vec2.sub(p, lineStart);
+                const lenSq = Vec2.dot(ab, ab);
+                if (lenSq < 1e-9) return p;
+                
+                const t = Vec2.dot(ap, ab) / lenSq;
+                return Vec2.add(lineStart, Vec2.mul(ab, t));
+            };
+            
+            // Project onto parent wall lines (from fixed end toward bevel junction)
+            // Wall0's line: fixedEnd0 -> bp0 (original direction)
+            // Wall1's line: fixedEnd1 -> bp1
+            const newBp0 = projectOntoInfiniteLine(movedP0, fixedEnd0, bp0);
+            const newBp1 = projectOntoInfiniteLine(movedP1, fixedEnd1, bp1);
+            
+            // Check constraints - bidirectional limits:
+            // Direction check: prevent bevel endpoints from flipping past fixed ends
+            const dir0 = Vec2.sub(bp0, fixedEnd0);
+            const newDir0 = Vec2.sub(newBp0, fixedEnd0);
+            const dir1 = Vec2.sub(bp1, fixedEnd1);
+            const newDir1 = Vec2.sub(newBp1, fixedEnd1);
+            
+            // Stop if would flip direction (go past fixed end)
+            if (Vec2.dot(dir0, newDir0) <= 0) return;
+            if (Vec2.dot(dir1, newDir1) <= 0) return;
+            
+            // Direction 1: Bevel shrinking toward perfect L junction
+            const newBevelLen = Vec2.dist(newBp0, newBp1);
+            if (newBevelLen < 1) return; // Stop at perfect L
+            
+            // Direction 2: Bevel growing, parent walls shrinking toward 0
+            const newWall0Len = Vec2.dist(fixedEnd0, newBp0);
+            const newWall1Len = Vec2.dist(fixedEnd1, newBp1);
+            if (newWall0Len < 1 || newWall1Len < 1) return; // Stop when either parent reaches 0
+            
+            // Update all three walls:
+            // - Bevel wall gets new endpoints
+            // - Parent walls get their junction endpoints updated
+            const wall0JunctionIdx = Vec2.dist(wall0.points[0], bp0) < 5 ? 0 : 1;
+            const wall1JunctionIdx = Vec2.dist(wall1.points[0], bp1) < 5 ? 0 : 1;
+            
+            const newWall0Points: [Point, Point] = [...wall0.points];
+            newWall0Points[wall0JunctionIdx] = newBp0;
+            
+            const newWall1Points: [Point, Point] = [...wall1.points];
+            newWall1Points[wall1JunctionIdx] = newBp1;
+            
+            updateWalls(
+                [bevelWall.id, wall0.id, wall1.id],
+                [
+                    { points: [newBp0, newBp1] },
+                    { points: newWall0Points },
+                    { points: newWall1Points }
+                ]
+            );
+            setBevelDragStart(world);
+            return;
+        }
+        
         if (isMoving) {
             e.preventDefault();
             e.currentTarget.style.cursor = "move";
             handleMoveWalls(world);
         } else {
             if (e.isDefaultPrevented()) return;
+            
+            // Check for bevel wall hover
+            const nearestBevel = findNearestBevelWall(world);
             const nearest = Vec2.nearest(world, points);
             const vertIndex = nearest.distance < CLICK_THRESHOLD ? nearest.index : -1;
-            setHoveredIndex(vertIndex);
+            
+            // Prioritize vertex over bevel
             if (vertIndex > -1) {
+                setHoveredIndex(vertIndex);
+                setHoveredBevel(null);
                 e.preventDefault();
                 e.currentTarget.style.cursor = "grab";
+            } else if (nearestBevel) {
+                setHoveredIndex(-1);
+                setHoveredBevel(nearestBevel);
+                e.preventDefault();
+                e.currentTarget.style.cursor = "ew-resize";
             } else {
+                setHoveredIndex(-1);
+                setHoveredBevel(null);
                 e.currentTarget.style.cursor = "default";
             }
         }
-    }, [clientToWorldPoint, handleMoveWalls, isMoving, CLICK_THRESHOLD, points]);
+    }, [clientToWorldPoint, handleMoveWalls, isMoving, isMovingBevel, movingBevel, bevelDragStart, CLICK_THRESHOLD, points, findNearestBevelWall, walls, updateWalls]);
 
     return (
         <>
@@ -414,6 +627,62 @@ export default function WallVerticesManager({ walls }: Props) {
                         transition={{ duration: 0.1 }}
                     />
                 )}
+            </AnimatePresence>
+
+            {/* Bevel wall highlight */}
+            <AnimatePresence>
+                {(hoveredBevel || movingBevel) && (() => {
+                    const bevel = movingBevel || hoveredBevel;
+                    if (!bevel) return null;
+                    
+                    // Get the actual bevel wall to highlight it
+                    const bevelWall = walls.find(w => w.id === bevel.wallId);
+                    if (!bevelWall) return null;
+                    
+                    const [p0, p1] = bevelWall.points;
+                    
+                    return (
+                        <g key="bevel-highlight" style={{ pointerEvents: 'none' }}>
+                            {/* Highlight the bevel wall line */}
+                            <motion.line
+                                x1={p0.x}
+                                y1={p0.y}
+                                x2={p1.x}
+                                y2={p1.y}
+                                stroke={movingBevel ? "#f59e0b" : "#ec4899"}
+                                strokeWidth={scalePixel(8, 4, 25)}
+                                strokeLinecap="round"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 0.8 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                            />
+                            {/* Endpoint indicators */}
+                            <motion.circle
+                                cx={p0.x}
+                                cy={p0.y}
+                                r={scalePixel(5, 3, 15)}
+                                fill={movingBevel ? "#f59e0b" : "#ec4899"}
+                                stroke="white"
+                                strokeWidth={scalePixel(2)}
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                exit={{ scale: 0 }}
+                            />
+                            <motion.circle
+                                cx={p1.x}
+                                cy={p1.y}
+                                r={scalePixel(5, 3, 15)}
+                                fill={movingBevel ? "#f59e0b" : "#ec4899"}
+                                stroke="white"
+                                strokeWidth={scalePixel(2)}
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                exit={{ scale: 0 }}
+                            />
+                        </g>
+                    );
+                })()}
             </AnimatePresence>
 
             <AnimatePresence>

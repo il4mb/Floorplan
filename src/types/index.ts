@@ -1,9 +1,9 @@
-import { LineSegment } from "@/utils/line2d";
-
 export interface Point {
     x: number;
     y: number;
 }
+
+export type LineSegment = [Point, Point];
 
 export interface Rect extends Point {
     width: number;

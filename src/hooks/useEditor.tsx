@@ -1,4 +1,4 @@
-import { Node as PlanNode, PlanData, RoomMeta, Wall } from "@/types";
+import { Node as PlanNode, PlanData, Point, RoomMeta, Wall } from "@/types";
 import { createContext, Dispatch, SetStateAction, useCallback, useContext, useEffect, useRef } from "react";
 import { nanoid } from "nanoid";
 import { normalizeWalls as normalizeWallsGeometry } from "@/utils/wallNormalize";
@@ -36,16 +36,148 @@ export const useEditor = () => {
         return rest;
     };
 
+    /**
+     * Merge collinear walls that share an endpoint into single walls
+     */
+    const mergeCollinearWalls = (walls: Wall[]): { walls: Wall[]; idMap: Record<string, string> } => {
+        if (walls.length <= 1) return { walls, idMap: {} };
+
+        const ANGLE_TOL = 0.05; // ~2.87 degrees
+        const ENDPOINT_TOL = 5; // pixels
+        const idMap: Record<string, string> = {};
+
+        // Deep copy
+        let workingWalls = walls.map(w => ({
+            id: w.id,
+            floor: w.floor,
+            thickness: w.thickness,
+            points: [{ ...w.points[0] }, { ...w.points[1] }] as [Point, Point]
+        }));
+
+        const areCollinear = (ptsA: [Point, Point], ptsB: [Point, Point]): boolean => {
+            const lenA = Vec2.dist(ptsA[0], ptsA[1]);
+            const lenB = Vec2.dist(ptsB[0], ptsB[1]);
+            if (lenA < 1 || lenB < 1) return false;
+
+            const dirA = Vec2.normalize(Vec2.sub(ptsA[1], ptsA[0]));
+            const dirB = Vec2.normalize(Vec2.sub(ptsB[1], ptsB[0]));
+
+            // Check parallel (cross product close to 0)
+            const cross = Math.abs(Vec2.cross(dirA, dirB));
+            if (cross > ANGLE_TOL) return false;
+
+            // Check on same line (distance from ptsB[0] to line A)
+            const v = Vec2.sub(ptsB[0], ptsA[0]);
+            const distToLine = Math.abs(Vec2.cross(dirA, v));
+            return distToLine <= ENDPOINT_TOL;
+        };
+
+        const findSharedEndpoint = (ptsA: [Point, Point], ptsB: [Point, Point]): { idxA: 0 | 1; idxB: 0 | 1 } | null => {
+            for (let i = 0; i < 2; i++) {
+                for (let j = 0; j < 2; j++) {
+                    if (Vec2.dist(ptsA[i as 0 | 1], ptsB[j as 0 | 1]) <= ENDPOINT_TOL) {
+                        return { idxA: i as 0 | 1, idxB: j as 0 | 1 };
+                    }
+                }
+            }
+            return null;
+        };
+
+        const hasOtherWallAtPoint = (p: Point, excludeIds: Set<string>): boolean => {
+            for (const w of workingWalls) {
+                if (excludeIds.has(w.id)) continue;
+                if (Vec2.dist(p, w.points[0]) <= ENDPOINT_TOL || Vec2.dist(p, w.points[1]) <= ENDPOINT_TOL) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        let changed = true;
+        let iterations = 0;
+        while (changed && iterations < 100) {
+            changed = false;
+            iterations++;
+
+            outer: for (let i = 0; i < workingWalls.length; i++) {
+                const wA = workingWalls[i]!;
+
+                for (let j = i + 1; j < workingWalls.length; j++) {
+                    const wB = workingWalls[j]!;
+
+                    // Same floor and thickness
+                    if (wA.floor !== wB.floor) continue;
+                    if (Math.abs(wA.thickness - wB.thickness) > 1) continue;
+
+                    // Find shared endpoint
+                    const shared = findSharedEndpoint(wA.points, wB.points);
+                    if (!shared) continue;
+
+                    // Check collinear
+                    if (!areCollinear(wA.points, wB.points)) continue;
+
+                    // Check no T-junction (no other wall at shared point)
+                    const sharedPoint = wA.points[shared.idxA];
+                    const excludeIds = new Set([wA.id, wB.id]);
+                    
+                    // Check if any non-collinear wall connects at this point
+                    let hasTJunction = false;
+                    for (const w of workingWalls) {
+                        if (excludeIds.has(w.id)) continue;
+                        const d0 = Vec2.dist(sharedPoint, w.points[0]);
+                        const d1 = Vec2.dist(sharedPoint, w.points[1]);
+                        if (d0 > ENDPOINT_TOL && d1 > ENDPOINT_TOL) continue;
+                        
+                        // Found a wall at this point, check if collinear with wA
+                        if (!areCollinear(wA.points, w.points)) {
+                            hasTJunction = true;
+                            break;
+                        }
+                    }
+
+                    if (hasTJunction) continue;
+
+                    // MERGE: wA absorbs wB
+                    const newEndpoint = wB.points[shared.idxB === 0 ? 1 : 0];
+                    wA.points[shared.idxA] = { ...newEndpoint };
+
+                    idMap[wB.id] = wA.id;
+                    workingWalls.splice(j, 1);
+
+                    changed = true;
+                    break outer;
+                }
+            }
+        }
+
+        for (const w of workingWalls) {
+            if (!idMap[w.id]) idMap[w.id] = w.id;
+        }
+
+        return { walls: workingWalls, idMap };
+    };
+
     const applyWallNormalization = (prev: PlanData, nextWalls: Wall[]) => {
-        const { walls: normalizedWallsRaw, idMap } = normalizeWallsGeometry(nextWalls, nanoid);
+        const { walls: normalizedWallsRaw, idMap: normalizeIdMap } = normalizeWallsGeometry(nextWalls, nanoid);
 
         // Auto-remove invalid tiny walls (length < thickness)
-        const normalizedWalls = normalizedWallsRaw.filter(w => {
+        const filteredWalls = normalizedWallsRaw.filter(w => {
             const a = w.points?.[0];
             const b = w.points?.[1];
             if (!a || !b) return false;
             return Vec2.dist(a, b) >= w.thickness;
         });
+
+        // Merge collinear walls that share endpoints
+        const { walls: normalizedWalls, idMap: mergeIdMap } = mergeCollinearWalls(filteredWalls);
+        
+        // Combine id maps
+        const idMap: Record<string, string> = { ...normalizeIdMap };
+        for (const [k, v] of Object.entries(mergeIdMap)) {
+            // Follow the chain: if k was mapped by normalize, use that mapping
+            const normalizedK = normalizeIdMap[k] ?? k;
+            idMap[normalizedK] = v;
+        }
 
         const nextNodes = prev.node.map((n) => {
             if (n.kind !== 'door' || !n.wallId) return n;
@@ -132,7 +264,6 @@ export const useEditor = () => {
         }
         normalizeWallsTimer = window.setTimeout(() => {
             normalizeWallsTimer = undefined;
-            if (hasUnmountedRef.current) return;
             setData(prev => applyWallNormalization(prev, prev.walls));
         }, Math.max(0, delayMs));
     }, [setData]);

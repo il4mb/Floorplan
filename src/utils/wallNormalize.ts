@@ -238,9 +238,9 @@ export function normalizeWallOverlaps(
     walls: Wall[];
     idMap: Record<string, string>;
 } {
-    const collinearDistTol = opts?.collinearDistTol ?? 0.5;
-    const joinTol = opts?.joinTol ?? 0.5;
-    const scalarTol = opts?.scalarTol ?? 0.5;
+    const collinearDistTol = opts?.collinearDistTol ?? 2; // increased from 0.5
+    const joinTol = opts?.joinTol ?? 2; // increased from 0.5
+    const scalarTol = opts?.scalarTol ?? 2; // increased from 0.5
 
     if (walls.length <= 1) return { walls, idMap: {} };
 
@@ -505,13 +505,175 @@ export function normalizeWallOverlaps(
     return { walls: deduped, idMap };
 }
 
+/**
+ * Merges collinear walls that share an endpoint into a single wall.
+ * This handles cases where two straight walls are end-to-end connected
+ * and should be merged into one continuous wall.
+ */
+export function mergeCollinearEndpointWalls(
+    walls: Wall[],
+    createId: () => string,
+    opts?: {
+        angleTol?: number; // tolerance for collinearity (cross product threshold)
+        endpointTol?: number; // tolerance for endpoint matching
+    }
+): { walls: Wall[]; idMap: Record<string, string> } {
+    // Cross product of two unit vectors: |a x b| = sin(angle)
+    // For ~5 degrees: sin(5°) ≈ 0.087
+    // For ~2 degrees: sin(2°) ≈ 0.035
+    const angleTol = opts?.angleTol ?? 0.05; // ~2.87 degrees
+    const endpointTol = opts?.endpointTol ?? 2;
+
+    if (walls.length <= 1) return { walls, idMap: {} };
+
+    const idMap: Record<string, string> = {};
+
+    // Check if two directions are collinear (parallel or anti-parallel)
+    const areDirectionsCollinear = (dir1: Point, dir2: Point): boolean => {
+        const cross = Math.abs(Vec2.cross(dir1, dir2));
+        return cross <= angleTol;
+    };
+
+    // Check if two walls are collinear (both parallel AND on same line)
+    const areWallsCollinear = (pts1: [Point, Point], pts2: [Point, Point]): boolean => {
+        const len1 = Vec2.dist(pts1[0], pts1[1]);
+        const len2 = Vec2.dist(pts2[0], pts2[1]);
+        if (len1 < EPS || len2 < EPS) return false;
+
+        const dir1 = Vec2.normalize(Vec2.sub(pts1[1], pts1[0]));
+        const dir2 = Vec2.normalize(Vec2.sub(pts2[1], pts2[0]));
+
+        // Check if directions are parallel
+        if (!areDirectionsCollinear(dir1, dir2)) return false;
+
+        // Also check that the walls are on the same infinite line
+        // by checking if a point from pts2 lies on the line defined by pts1
+        const v = Vec2.sub(pts2[0], pts1[0]);
+        const distToLine = Math.abs(Vec2.cross(dir1, v));
+        
+        // Allow some tolerance based on wall thickness or endpoint tolerance
+        return distToLine <= endpointTol;
+    };
+
+    // Find which endpoints match between two walls
+    const findMatchingEndpoints = (
+        pts1: [Point, Point],
+        pts2: [Point, Point]
+    ): { idx1: 0 | 1; idx2: 0 | 1 } | null => {
+        for (let i = 0; i < 2; i++) {
+            for (let j = 0; j < 2; j++) {
+                if (Vec2.dist(pts1[i as 0 | 1], pts2[j as 0 | 1]) <= endpointTol) {
+                    return { idx1: i as 0 | 1, idx2: j as 0 | 1 };
+                }
+            }
+        }
+        return null;
+    };
+
+    // Check if there's a non-collinear wall at point
+    const hasNonCollinearAtPoint = (p: Point, refDir: Point, excludeIds: Set<string>, allWalls: Array<{ id: string; points: [Point, Point] }>): boolean => {
+        for (const w of allWalls) {
+            if (excludeIds.has(w.id)) continue;
+            const d0 = Vec2.dist(p, w.points[0]);
+            const d1 = Vec2.dist(p, w.points[1]);
+            if (d0 > endpointTol && d1 > endpointTol) continue;
+
+            const wLen = Vec2.dist(w.points[0], w.points[1]);
+            if (wLen < EPS) continue;
+
+            const wDir = Vec2.normalize(Vec2.sub(w.points[1], w.points[0]));
+            if (!areDirectionsCollinear(refDir, wDir)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Work with mutable copies
+    let workingWalls = walls.map(w => ({
+        id: w.id,
+        floor: w.floor,
+        thickness: w.thickness,
+        points: [{ ...w.points[0] }, { ...w.points[1] }] as [Point, Point]
+    }));
+
+    let changed = true;
+    let iterations = 0;
+    const maxIterations = walls.length * walls.length; // Safety limit
+
+    while (changed && iterations < maxIterations) {
+        changed = false;
+        iterations++;
+
+        for (let i = 0; i < workingWalls.length && !changed; i++) {
+            const wallA = workingWalls[i]!;
+
+            for (let j = i + 1; j < workingWalls.length && !changed; j++) {
+                const wallB = workingWalls[j]!;
+
+                // Must have same floor and thickness
+                if (wallA.floor !== wallB.floor) continue;
+                if (Math.abs(wallA.thickness - wallB.thickness) > 0.1) continue;
+
+                // Find matching endpoints
+                const match = findMatchingEndpoints(wallA.points, wallB.points);
+                if (!match) continue;
+
+                // Check if collinear
+                if (!areWallsCollinear(wallA.points, wallB.points)) continue;
+
+                // Check if junction point has non-collinear walls (T-junction)
+                const junctionPoint = wallA.points[match.idx1];
+                const wallALen = Vec2.dist(wallA.points[0], wallA.points[1]);
+                if (wallALen < EPS) continue;
+
+                const refDir = Vec2.normalize(Vec2.sub(wallA.points[1], wallA.points[0]));
+                const excludeIds = new Set([wallA.id, wallB.id]);
+
+                if (hasNonCollinearAtPoint(junctionPoint, refDir, excludeIds, workingWalls)) {
+                    continue; // Don't merge at T-junctions
+                }
+
+                // Merge: wallA absorbs wallB
+                // The new endpoint is wallB's opposite endpoint
+                const newEndpoint = wallB.points[match.idx2 === 0 ? 1 : 0];
+                wallA.points[match.idx1] = { ...newEndpoint };
+
+                // Map wallB's id to wallA
+                idMap[wallB.id] = wallA.id;
+
+                // Remove wallB from working set
+                workingWalls.splice(j, 1);
+
+                changed = true;
+            }
+        }
+    }
+
+    // Build final result
+    const result: Wall[] = workingWalls.map(w => ({
+        id: w.id,
+        floor: w.floor,
+        thickness: w.thickness,
+        points: w.points
+    }));
+
+    for (const w of result) {
+        if (!idMap[w.id]) {
+            idMap[w.id] = w.id;
+        }
+    }
+
+    return { walls: result, idMap };
+}
+
 export function normalizeWalls(
     walls: Wall[],
     createId: () => string
 ): { walls: Wall[]; idMap: Record<string, string> } {
     const split = splitWallsAtIntersections(walls, createId);
     const merged = normalizeWallOverlaps(split.walls, createId);
-    // merge id maps (split first then merged)
+    // Note: mergeCollinearEndpointWalls is now called in useEditor after filtering
     const idMap: Record<string, string> = { ...split.idMap };
     for (const [k, v] of Object.entries(merged.idMap)) idMap[k] = v;
     return { walls: merged.walls, idMap };

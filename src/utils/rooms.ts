@@ -197,12 +197,21 @@ export function detectRoomsFromWalls(walls: Wall[], opts?: { epsilon?: number; m
 
     if (rooms.length === 0) return [];
 
-    // 6) Drop the outer face: typically the largest area
-    const maxArea = Math.max(...rooms.map(r => r.area));
-    const withoutOuter = rooms.filter(r => r.area < maxArea * 0.999);
-
-    // In tiny plans, outer face might be the only face above minArea
-    const finalRooms = withoutOuter.length > 0 ? withoutOuter : [];
+    // 6) Drop the outer face: typically the largest area AND has negative winding (CCW)
+    // The outer boundary should be the unbounded face traced in opposite winding
+    // But in practice, if we only have 1 room, that IS the room we want.
+    // Only filter out outer face if we have more than 1 candidate.
+    let finalRooms: typeof rooms;
+    
+    if (rooms.length === 1) {
+        // Single closed polygon - this is the room
+        finalRooms = rooms;
+    } else {
+        // Multiple faces detected - remove the outer boundary (largest)
+        const maxArea = Math.max(...rooms.map(r => r.area));
+        const withoutOuter = rooms.filter(r => r.area < maxArea * 0.999);
+        finalRooms = withoutOuter.length > 0 ? withoutOuter : rooms;
+    }
 
     // 7) Stable sort by area desc
     finalRooms.sort((a, b) => b.area - a.area);

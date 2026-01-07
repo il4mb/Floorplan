@@ -21,6 +21,10 @@ export type EngineState = Engine & {
     // Guideline snapping/visual guides toggle (independent from Snap enabled).
     guidelinesEnabled: boolean;
     setGuidelinesEnabled: Dispatch<SetStateAction<boolean>>;
+
+    // Wall rule display mode: which measurements to show
+    wallRuleMode: 'inside' | 'outside' | 'both';
+    setWallRuleMode: Dispatch<SetStateAction<'inside' | 'outside' | 'both'>>;
 }
 
 export const EngineContext = createContext<EngineState | undefined>(undefined);

@@ -25,7 +25,7 @@ export interface WallLinesManagerProps {
 export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const { snapGrid } = useSnap();
     const { disabled } = useGrid();
-    const { updateWalls, cleanupShortWalls, normalizeWallsDebounced } = useEditor();
+    const { updateWalls, cleanupShortWalls, normalizeWallsDebounced, removeWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
     const { mode, scalePixel, setIsInteracting, setSelectedWallId, guidelinesEnabled } = useEngine();
 
@@ -180,6 +180,15 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     useMouseDown((e) => {
         if (!hoveredId || ["slice-wall", "eraser"].includes(mode)) return;
         e.preventDefault();
+        
+        // Delete mode: click to delete wall
+        if (mode === "delete") {
+            removeWalls([hoveredId]);
+            setHoveredId(undefined);
+            normalizeWallsDebounced();
+            return;
+        }
+        
         e.currentTarget.style.cursor = "move";
 
         setSelectedWallId(hoveredId);
@@ -195,7 +204,7 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         setConnections(connections);
         setMovingId(hoveredId);
         setIsInteracting(true);
-    }, [hoveredId, mode, walls, setSelectedWallId, setIsInteracting]);
+    }, [hoveredId, mode, walls, setSelectedWallId, setIsInteracting, removeWalls, normalizeWallsDebounced]);
 
     useMouseUp(() => {
         if (!movingId || ["slice-wall", "eraser"].includes(mode)) return;
@@ -321,6 +330,26 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
             const updateStack: [string, Record<string, any>][] = [
                 [movingWall.id, { points: [p0, p1] }]
             ];
+
+            // Move connected wall endpoints to maintain joints
+            for (const conn of connections) {
+                // Get the new position for this connection point
+                const newConnPoint = conn.index === 0 ? p0 : p1;
+                
+                for (const connected of conn.connections) {
+                    // Skip if already in update stack
+                    if (updateStack.some(([id]) => id === connected.wall.id)) continue;
+                    
+                    const connectedWall = walls.find(w => w.id === connected.wall.id);
+                    if (!connectedWall) continue;
+                    
+                    // Update the connected wall's endpoint to follow
+                    const newPoints: [Point, Point] = [...connectedWall.points];
+                    newPoints[connected.index] = { ...newConnPoint };
+                    
+                    updateStack.push([connected.wall.id, { points: newPoints }]);
+                }
+            }
 
             const ids = updateStack.map(d => d[0]);
             const patches = updateStack.map(d => d[1]);
