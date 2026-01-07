@@ -17,6 +17,10 @@ export type EngineState = Engine & {
     // Currently selected wall (for editing per-wall properties like thickness).
     selectedWallId: string | null;
     setSelectedWallId: Dispatch<SetStateAction<string | null>>;
+
+    // Guideline snapping/visual guides toggle (independent from Snap enabled).
+    guidelinesEnabled: boolean;
+    setGuidelinesEnabled: Dispatch<SetStateAction<boolean>>;
 }
 
 export const EngineContext = createContext<EngineState | undefined>(undefined);

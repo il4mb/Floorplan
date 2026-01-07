@@ -8,7 +8,7 @@ import RoomList from './rooms/RoomList';
 import { useMemo } from 'react';
 
 export default function Sidebar() {
-    const { mode, setMode, unit, setUnit, selectedWallId } = useEngine();
+    const { mode, setMode, unit, setUnit, selectedWallId, guidelinesEnabled, setGuidelinesEnabled } = useEngine();
     const { disabled, setDisabled } = useGrid();
     const { data, updateWalls } = useEditor();
 
@@ -63,6 +63,16 @@ export default function Sidebar() {
                         aria-label="Enable snap"
                     />
                     <span style={{ fontSize: 12 }}>Snap enabled</span>
+                </label>
+
+                <label className="fp-row" style={{ alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <input
+                        type="checkbox"
+                        checked={guidelinesEnabled}
+                        onChange={(e) => setGuidelinesEnabled(e.target.checked)}
+                        aria-label="Enable guidelines"
+                    />
+                    <span style={{ fontSize: 12 }}>Guidelines</span>
                 </label>
 
                 <div className="fp-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>

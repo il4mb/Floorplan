@@ -3,6 +3,7 @@ import { useEditor } from '@/hooks/useEditor';
 import { useEngine } from '@/hooks/useEngine';
 import { useCreatePortal } from '@/hooks/usePortal';
 import { useSnap } from '@/hooks/useSnap';
+import { useGrid } from '@/hooks/useGrid';
 import { Point } from '@/types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,12 +12,15 @@ import Vec2 from '@/utils/vec2d';
 import { formatLength } from '@/utils/units';
 
 export default function WallDrawer() {
-    const { scalePixel, setMode, unit } = useEngine();
+    const { scalePixel, setMode, unit, guidelinesEnabled } = useEngine();
     const { snap, snapWall } = useSnap();
     const { clientToWorldPoint } = useCanvas();
-    const { addWall, data, cleanupShortWalls } = useEditor();
+    const { addWall, data, cleanupShortWalls, splitWall, normalizeWalls } = useEditor();
+    const { disabled: snapDisabled } = useGrid();
     const [startPoint, setStartPoint] = useState<Point>();
     const [current, setCurrent] = useState<Point>();
+    const [pendingSlice, setPendingSlice] = useState<{ wallId: string; t: number; point: Point }>();
+    const [guides, setGuides] = useState<{ x?: number; y?: number } | null>(null);
 
     const cancel = useCallback(() => {
         setStartPoint(undefined);
@@ -117,6 +121,110 @@ export default function WallDrawer() {
         };
         return { snapped: true, point: p };
     }, [wallDirs, angleDiff]);
+
+    const snapToWallBody = useCallback((point: Point, thresholdPx = 25) => {
+        if (snapDisabled) return;
+        if (!data.walls || data.walls.length === 0) return;
+
+        const threshold = scalePixel(thresholdPx, 1, 2000);
+        let best:
+            | { wallId: string; t: number; point: Point; distance: number }
+            | undefined;
+
+        for (const w of data.walls) {
+            const a = w.points?.[0];
+            const b = w.points?.[1];
+            if (!a || !b) continue;
+
+            const ab = Vec2.sub(b, a);
+            const lenSq = Vec2.dot(ab, ab);
+            if (lenSq < 1e-9) continue;
+
+            const ap = Vec2.sub(point, a);
+            const rawT = Vec2.dot(ap, ab) / lenSq;
+            const t = Math.max(0, Math.min(1, rawT));
+
+            // Ignore endpoints here; endpoint snapping is handled separately.
+            if (!(t > 1e-4 && t < 1 - 1e-4)) continue;
+
+            const proj = Vec2.add(a, Vec2.mul(ab, t));
+            const d = Vec2.dist(point, proj);
+            if (d > threshold) continue;
+
+            if (!best || d < best.distance) {
+                best = { wallId: w.id, t, point: proj, distance: d };
+            }
+        }
+
+        if (!best) return;
+        return { wallId: best.wallId, t: best.t, point: best.point };
+    }, [data.walls, scalePixel, snapDisabled]);
+
+    const snapForDrawing = useCallback((point: Point, thresholdPx = 25) => {
+        // Priority: wall endpoints -> wall body -> grid.
+        const endpoint = snapWall(point, thresholdPx);
+        if (!Vec2.equal(endpoint, point)) {
+            return { point: endpoint, pendingSlice: undefined };
+        }
+
+        const body = snapToWallBody(point, thresholdPx);
+        if (body) {
+            return { point: body.point, pendingSlice: body };
+        }
+
+        return { point: snap(point, thresholdPx), pendingSlice: undefined };
+    }, [snap, snapWall, snapToWallBody]);
+
+    const applyGuidelineSnap = useCallback((p: Point) => {
+        // Guidelines are a form of snapping; respect both toggles.
+        if (snapDisabled || !guidelinesEnabled) {
+            setGuides(null);
+            return p;
+        }
+
+        const tol = scalePixel(12, 1, 2000);
+        let bestDxAbs = Infinity;
+        let bestDyAbs = Infinity;
+        let guideX: number | undefined;
+        let guideY: number | undefined;
+        let dxDelta = 0;
+        let dyDelta = 0;
+
+        for (const w of data.walls) {
+            for (const end of w.points) {
+                const dx = end.x - p.x;
+                const dy = end.y - p.y;
+
+                const dxAbs = Math.abs(dx);
+                const dyAbs = Math.abs(dy);
+
+                if (dxAbs < bestDxAbs) {
+                    bestDxAbs = dxAbs;
+                    guideX = end.x;
+                    dxDelta = dx;
+                }
+                if (dyAbs < bestDyAbs) {
+                    bestDyAbs = dyAbs;
+                    guideY = end.y;
+                    dyDelta = dy;
+                }
+            }
+        }
+
+        let next = p;
+        const nextGuides: { x?: number; y?: number } = {};
+        if (guideX !== undefined && bestDxAbs <= tol) {
+            next = { ...next, x: next.x + dxDelta };
+            nextGuides.x = guideX;
+        }
+        if (guideY !== undefined && bestDyAbs <= tol) {
+            next = { ...next, y: next.y + dyDelta };
+            nextGuides.y = guideY;
+        }
+
+        setGuides(nextGuides.x !== undefined || nextGuides.y !== undefined ? nextGuides : null);
+        return next;
+    }, [data.walls, guidelinesEnabled, scalePixel, snapDisabled]);
 
     const isDrawing = Boolean(startPoint);
     const wallLength = useMemo(() => {
@@ -223,14 +331,18 @@ export default function WallDrawer() {
     useMouseMove((e) => {
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
         if (!startPoint) {
-            setCurrent(snap(world));
+            const snapped = snapForDrawing(world);
+            setPendingSlice(snapped.pendingSlice);
+            setCurrent(applyGuidelineSnap(snapped.point));
             return;
         }
 
         // Alt: temporarily disable angle snapping
         if (e.altKey) {
             const endpoint = snapWall(world, 25);
-            setCurrent(snap(endpoint));
+            const snapped = snapForDrawing(endpoint);
+            setPendingSlice(snapped.pendingSlice);
+            setCurrent(applyGuidelineSnap(snapped.point));
             return;
         }
 
@@ -239,9 +351,13 @@ export default function WallDrawer() {
             const ortho = applyOrtho(startPoint, world);
             const angSnap = applyAngleSnap(startPoint, ortho, 45, 10);
             if (angSnap.snapped) {
-                setCurrent(snapWall(angSnap.point, 25));
+                const snapped = snapForDrawing(angSnap.point);
+                setPendingSlice(snapped.pendingSlice);
+                setCurrent(applyGuidelineSnap(snapped.point));
             } else {
-                setCurrent(snap(ortho));
+                const snapped = snapForDrawing(ortho);
+                setPendingSlice(snapped.pendingSlice);
+                setCurrent(applyGuidelineSnap(snapped.point));
             }
             return;
         }
@@ -251,17 +367,23 @@ export default function WallDrawer() {
         // 2) angle increments (15°)
         const parallel = applyWallParallelSnap(startPoint, world);
         if (parallel.snapped) {
-            setCurrent(snapWall(parallel.point, 25));
+            const snapped = snapForDrawing(parallel.point);
+            setPendingSlice(snapped.pendingSlice);
+            setCurrent(applyGuidelineSnap(snapped.point));
             return;
         }
 
         const angSnap = applyAngleSnap(startPoint, world, 15, 6);
         if (angSnap.snapped) {
-            setCurrent(snapWall(angSnap.point, 25));
+            const snapped = snapForDrawing(angSnap.point);
+            setPendingSlice(snapped.pendingSlice);
+            setCurrent(applyGuidelineSnap(snapped.point));
         } else {
-            setCurrent(snap(world));
+            const snapped = snapForDrawing(world);
+            setPendingSlice(snapped.pendingSlice);
+            setCurrent(applyGuidelineSnap(snapped.point));
         }
-    }, [snap, snapWall, clientToWorldPoint, startPoint, applyOrtho, applyAngleSnap, applyWallParallelSnap]);
+    }, [snapForDrawing, snapWall, clientToWorldPoint, startPoint, applyOrtho, applyAngleSnap, applyWallParallelSnap, applyGuidelineSnap]);
 
     useMouseDown((e) => {
         if (e.button == 0) {
@@ -278,14 +400,19 @@ export default function WallDrawer() {
                 }
             }
 
-            const world = snap(constrained);
+            const snapped = snapForDrawing(constrained);
+            const world = applyGuidelineSnap(snapped.point);
             if (!startPoint) {
                 setStartPoint(world);
+                setPendingSlice(snapped.pendingSlice);
             } else {
                 const thickness = 200;
                 const len = Vec2.dist(startPoint, world);
                 const minLen = Math.max(200, thickness);
                 if (len >= minLen) {
+                    if (snapped.pendingSlice) {
+                        splitWall(snapped.pendingSlice.wallId, snapped.pendingSlice.t);
+                    }
                     addWall({
                         points: [startPoint, world],
                         thickness,
@@ -293,20 +420,60 @@ export default function WallDrawer() {
                     });
                     // Cleanup in case the new segment creates tiny joined stubs elsewhere.
                     cleanupShortWalls(200);
+                    // Resolve intersections + overlaps created by this new segment.
+                    normalizeWalls();
                     setStartPoint(world); // Continue drawing from the last point
+                    setPendingSlice(undefined);
                 }
             }
         } else {
             // Right click to cancel
             cancel();
         }
-    }, [startPoint, clientToWorldPoint, snap, addWall, cancel, applyOrtho, applyAngleSnap, applyWallParallelSnap, cleanupShortWalls]);
+    }, [startPoint, clientToWorldPoint, snapForDrawing, addWall, cancel, applyOrtho, applyAngleSnap, applyWallParallelSnap, cleanupShortWalls, splitWall, normalizeWalls, applyGuidelineSnap]);
 
     return (
         <>
             <AnimatePresence>
                 {startPoint && (
                     <>
+                        <AnimatePresence>
+                            {guides?.x !== undefined && (
+                                <motion.line
+                                    key="guide-x"
+                                    x1={guides.x}
+                                    y1={-1000000}
+                                    x2={guides.x}
+                                    y2={1000000}
+                                    stroke="#10b981"
+                                    strokeWidth={scalePixel(1.5)}
+                                    strokeDasharray={scalePixel(10)}
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 0.8 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={{ duration: 0.1 }}
+                                    style={{ pointerEvents: 'none' }}
+                                />
+                            )}
+                            {guides?.y !== undefined && (
+                                <motion.line
+                                    key="guide-y"
+                                    x1={-1000000}
+                                    y1={guides.y}
+                                    x2={1000000}
+                                    y2={guides.y}
+                                    stroke="#10b981"
+                                    strokeWidth={scalePixel(1.5)}
+                                    strokeDasharray={scalePixel(10)}
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 0.8 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={{ duration: 0.1 }}
+                                    style={{ pointerEvents: 'none' }}
+                                />
+                            )}
+                        </AnimatePresence>
+
                         {/* Start point indicator */}
                         <motion.circle
                             cx={startPoint.x}
@@ -324,6 +491,23 @@ export default function WallDrawer() {
                         {/* Drawing guide line */}
                         {points && current && (
                             <>
+                                {/* Pending slice indicator (when snapping to wall body) */}
+                                {pendingSlice && (
+                                    <motion.circle
+                                        cx={pendingSlice.point.x}
+                                        cy={pendingSlice.point.y}
+                                        r={scalePixel(4, 2, 120)}
+                                        fill="#22c55e"
+                                        stroke="white"
+                                        strokeWidth={scalePixel(1.5)}
+                                        initial={{ scale: 0, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0, opacity: 0 }}
+                                        transition={{ duration: 0.1 }}
+                                        style={{ pointerEvents: 'none' }}
+                                    />
+                                )}
+
                                 <motion.polyline
                                     points={points}
                                     fill='none'

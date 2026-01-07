@@ -25,9 +25,9 @@ export interface WallLinesManagerProps {
 export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     const { snapGrid } = useSnap();
     const { disabled } = useGrid();
-    const { updateWalls, cleanupShortWalls } = useEditor();
+    const { updateWalls, cleanupShortWalls, normalizeWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
-    const { mode, scalePixel, setIsInteracting, setSelectedWallId } = useEngine();
+    const { mode, scalePixel, setIsInteracting, setSelectedWallId, guidelinesEnabled } = useEngine();
 
     const [hoveredId, setHoveredId] = useState<string>();
     const [movingId, setMovingId] = useState<string>();
@@ -203,7 +203,7 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
         // Auto-join: snap moved wall endpoints to existing vertices if close.
         const movedWall = walls.find(w => w.id === movingId);
         if (movedWall) {
-            const tol = Math.max(0.5, movedWall.thickness * 0.5);
+            const tol = Math.max(0.5, movedWall.thickness);
             const p0 = movedWall.points[0];
             const p1 = movedWall.points[1];
             const j0 = findNearestVertex(p0, movedWall.id, tol);
@@ -226,7 +226,10 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
 
         // Remove tiny joined stubs after manipulation completes.
         cleanupShortWalls(200);
-    }, [movingId, mode, setIsInteracting, walls, findNearestVertex, updateWalls, cleanupShortWalls]);
+
+        // Ensure intersections/overlaps are actually sliced/merged.
+        normalizeWalls();
+    }, [movingId, mode, setIsInteracting, walls, findNearestVertex, updateWalls, cleanupShortWalls, normalizeWalls]);
 
     useMouseMove((e) => {
         if (e.isDefaultPrevented() || ["slice-wall", "eraser"].includes(mode)) return;
@@ -251,7 +254,7 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
 
             // Guideline snap: align moved wall endpoints to nearby existing
             // endpoints' X/Y (vertical/horizontal guides).
-            if (!disabled) {
+            if (!disabled && guidelinesEnabled) {
                 const tol = scalePixel(12, 1, 2000);
                 let bestDxAbs = Infinity;
                 let bestDyAbs = Infinity;
@@ -337,7 +340,7 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
     return (
         <>
             <AnimatePresence>
-                {isMoving && guides?.x !== undefined && (
+                {isMoving && guidelinesEnabled && guides?.x !== undefined && (
                     <motion.line
                         key="guide-x"
                         x1={guides.x}
@@ -353,7 +356,7 @@ export default function WallLinesManager({ walls }: WallLinesManagerProps) {
                         transition={{ duration: 0.1 }}
                     />
                 )}
-                {isMoving && guides?.y !== undefined && (
+                {isMoving && guidelinesEnabled && guides?.y !== undefined && (
                     <motion.line
                         key="guide-y"
                         x1={-1000000}

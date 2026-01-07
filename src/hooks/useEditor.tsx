@@ -1,5 +1,5 @@
 import { Node as PlanNode, PlanData, RoomMeta, Wall } from "@/types";
-import { createContext, Dispatch, SetStateAction, useCallback, useContext } from "react";
+import { createContext, Dispatch, SetStateAction, useCallback, useContext, useRef } from "react";
 import { nanoid } from "nanoid";
 import { normalizeWalls as normalizeWallsGeometry } from "@/utils/wallNormalize";
 import { findNearestWallAttachment } from "@/components/objects/wallAttach";
@@ -12,10 +12,18 @@ export type EditorState = {
 
 export const EditorContext = createContext<EditorState | undefined>(undefined);
 
+// Debounce normalization globally so multiple components/tools don't
+// repeatedly normalize during fast interactions.
+let normalizeWallsTimer: number | undefined;
+
 export const useEditor = () => {
     const ctx = useContext(EditorContext);
     if (!ctx) throw new Error("useEditor should call inside EditorProvider");
     const { data, setData } = ctx;
+
+    // Use a ref so we can cancel any scheduled normalize on unmount.
+    // The actual timer is global to keep behavior consistent across components.
+    const hasUnmountedRef = useRef(false);
 
     const detachFromWall = (n: PlanNode): PlanNode => {
         const { wallId: _wallId, wallT: _wallT, ...rest } = n;
@@ -109,6 +117,26 @@ export const useEditor = () => {
 
     const normalizeWalls = useCallback(() => {
         setData(prev => applyWallNormalization(prev, prev.walls));
+    }, []);
+
+    const normalizeWallsDebounced = useCallback((delayMs: number = 80) => {
+        if (normalizeWallsTimer !== undefined) {
+            clearTimeout(normalizeWallsTimer);
+            normalizeWallsTimer = undefined;
+        }
+        normalizeWallsTimer = window.setTimeout(() => {
+            normalizeWallsTimer = undefined;
+            if (hasUnmountedRef.current) return;
+            setData(prev => applyWallNormalization(prev, prev.walls));
+        }, Math.max(0, delayMs));
+    }, [setData]);
+
+    // Mark unmount so the scheduled callback becomes a no-op.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useCallback(() => {
+        return () => {
+            hasUnmountedRef.current = true;
+        };
     }, []);
 
     const cleanupShortWalls = useCallback((minLenMm: number = 200) => {
@@ -225,6 +253,7 @@ export const useEditor = () => {
         updateWall,
         updateWalls,
         normalizeWalls,
+        normalizeWallsDebounced,
         cleanupShortWalls,
         removeWalls,
         splitWall,

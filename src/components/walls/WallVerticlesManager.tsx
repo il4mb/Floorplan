@@ -23,15 +23,16 @@ export interface Props {
 }
 
 export default function WallVerticesManager({ walls }: Props) {
-    const { updateWalls, cleanupShortWalls } = useEditor();
+    const { updateWalls, cleanupShortWalls, splitWall, normalizeWalls } = useEditor();
     const { clientToWorldPoint } = useCanvas();
-    const { scalePixel, setIsInteracting } = useEngine();
+    const { scalePixel, setIsInteracting, guidelinesEnabled } = useEngine();
     const { snap } = useSnap();
     const { disabled } = useGrid();
     const [moving, setMoving] = useState<Moving[]>([]);
     const [hoveredIndex, setHoveredIndex] = useState(-1);
     const [movingIndex, setMovingIndex] = useState(-1);
     const [guides, setGuides] = useState<{ x?: number; y?: number } | null>(null);
+    const [pendingSlice, setPendingSlice] = useState<{ wallId: string; t: number } | null>(null);
 
     const isMoving = useMemo(() => moving.length > 0, [moving]);
     const isHovering = useMemo(() => hoveredIndex > -1, [hoveredIndex]);
@@ -40,6 +41,52 @@ export default function WallVerticesManager({ walls }: Props) {
 
     const points = useMemo(() => {
         return Poly2.removeDuplicate(walls.map(wall => wall.points).flat());
+    }, [walls]);
+
+    const findNearestExternalVertex = useCallback((p: Point, excludeWallIds: Set<string>, tol: number): Point | null => {
+        let best: Point | null = null;
+        let bestDist = Infinity;
+
+        for (const w of walls) {
+            if (excludeWallIds.has(w.id)) continue;
+            for (const end of w.points) {
+                const d = Vec2.dist(p, end);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = end;
+                }
+            }
+        }
+
+        return best && bestDist <= tol ? best : null;
+    }, [walls]);
+
+    const findNearestExternalWallBody = useCallback((p: Point, excludeWallIds: Set<string>) => {
+        let best: { wallId: string; t: number; point: Point; distance: number } | null = null;
+
+        for (const w of walls) {
+            if (excludeWallIds.has(w.id)) continue;
+            const seg = w.points;
+            const a = seg[0];
+            const b = seg[1];
+            const ab = Vec2.sub(b, a);
+            const ap = Vec2.sub(p, a);
+            const lenSq = Vec2.dot(ab, ab);
+            if (lenSq <= 1e-9) continue;
+
+            const t = Math.max(0, Math.min(1, Vec2.dot(ap, ab) / lenSq));
+            const proj = Vec2.add(a, Vec2.mul(ab, t));
+            const d = Vec2.dist(p, proj);
+
+            // Ignore endpoints; endpoint joins are handled via vertex snapping.
+            if (t <= 1e-4 || t >= 1 - 1e-4) continue;
+
+            if (!best || d < best.distance) {
+                best = { wallId: w.id, t, point: proj, distance: d };
+            }
+        }
+
+        return best;
     }, [walls]);
 
     // Portal for vertex movement UI
@@ -136,14 +183,36 @@ export default function WallVerticesManager({ walls }: Props) {
     ), [isMoving, isHovering, movingCount]);
 
     const handleMoveWalls = useCallback((point: Point) => {
-        const snapped = snap(point);
+        const movingWallIds = new Set(moving.map((m) => m.wallId));
+
+        // Prefer snapping to existing (non-moving) vertices / wall bodies so
+        // joins land exactly where the user is dragging.
+        let snapped = snap(point);
+        if (!disabled) {
+            const tol = scalePixel(18, 1, 2000);
+
+            const externalVert = findNearestExternalVertex(point, movingWallIds, tol);
+            const externalBody = findNearestExternalWallBody(point, movingWallIds);
+
+            const vertDist = externalVert ? Vec2.dist(point, externalVert) : Infinity;
+            const bodyDist = externalBody ? externalBody.distance : Infinity;
+
+            if (externalVert && vertDist <= tol && vertDist <= bodyDist) {
+                snapped = externalVert;
+                setPendingSlice(null);
+            } else if (externalBody && bodyDist <= tol) {
+                snapped = externalBody.point;
+                setPendingSlice({ wallId: externalBody.wallId, t: externalBody.t });
+            } else {
+                setPendingSlice(null);
+            }
+        }
 
         // Guideline snap: align dragged vertex to nearby existing endpoints
         // (vertical/horizontal guides). Threshold is screen-consistent.
         let guided = snapped;
-        if (!disabled) {
+        if (!disabled && guidelinesEnabled) {
             const tol = scalePixel(12, 1, 2000);
-            const movingWallIds = new Set(moving.map((m) => m.wallId));
 
             let bestDx = Infinity;
             let bestDy = Infinity;
@@ -192,7 +261,7 @@ export default function WallVerticesManager({ walls }: Props) {
             patches.push({ points: nextPoints });
         }
         if (ids.length > 0) updateWalls(ids, patches);
-    }, [snap, moving, walls, updateWalls, disabled, scalePixel]);
+    }, [snap, moving, walls, updateWalls, disabled, scalePixel, findNearestExternalVertex, findNearestExternalWallBody]);
 
     useMouseDown((e) => {
         if (e.isDefaultPrevented()) return;
@@ -215,39 +284,40 @@ export default function WallVerticesManager({ walls }: Props) {
     useMouseUp(() => {
         if (!isMoving) return;
 
-        // Auto-join: if the dragged vertex ends near another existing vertex (not
-        // part of the moved set), snap to it.
-        const draggedPoint = movingIndex > -1 ? points[movingIndex] : undefined;
-        if (draggedPoint && moving.length > 0) {
-            const firstWall = walls.find(w => w.id === moving[0]!.wallId);
-            const tol = Math.max(0.5, (firstWall?.thickness ?? 1) * 0.5);
-            const movingWallIds = new Set(moving.map(m => m.wallId));
+        // Auto-join: if the dragged vertex ends near another existing vertex
+        // (not part of the moved set), snap to it.
+        // IMPORTANT: do not use `movingIndex` into the deduped `points` list,
+        // since ordering/dedup can change during dragging.
+        if (moving.length > 0) {
+            const movingWallIds = new Set(moving.map((m) => m.wallId));
+            const first = moving[0]!;
+            const firstWall = walls.find((w) => w.id === first.wallId);
+            const draggedPoint = firstWall?.points[first.wallPointIndex];
 
-            let best: Point | null = null;
-            let bestDist = Infinity;
-            for (const w of walls) {
-                if (movingWallIds.has(w.id)) continue;
-                for (const end of w.points) {
-                    const d = Vec2.dist(draggedPoint, end);
-                    if (d < bestDist) {
-                        bestDist = d;
-                        best = end;
+            if (draggedPoint) {
+                const tol = Math.max(scalePixel(10, 0.5, 2000), (firstWall?.thickness ?? 1));
+                const best = findNearestExternalVertex(draggedPoint, movingWallIds, tol);
+
+                if (best) {
+                    const ids: string[] = [];
+                    const patches: Array<Partial<import('@/types').Wall>> = [];
+                    for (const m of moving) {
+                        const w = walls.find(x => x.id === m.wallId);
+                        if (!w) continue;
+                        const nextPoints = w.points.map((p, i) => (i === m.wallPointIndex ? best : p)) as LineSegment;
+                        ids.push(w.id);
+                        patches.push({ points: nextPoints });
                     }
+                    if (ids.length > 0) updateWalls(ids, patches);
                 }
             }
+        }
 
-            if (best && bestDist <= tol) {
-                const ids: string[] = [];
-                const patches: Array<Partial<import('@/types').Wall>> = [];
-                for (const m of moving) {
-                    const w = walls.find(x => x.id === m.wallId);
-                    if (!w) continue;
-                    const nextPoints = w.points.map((p, i) => (i === m.wallPointIndex ? best! : p)) as LineSegment;
-                    ids.push(w.id);
-                    patches.push({ points: nextPoints });
-                }
-                if (ids.length > 0) updateWalls(ids, patches);
-            }
+        // Auto-slice: if we snapped to another wall's body during drag, split
+        // that wall at the snapped t so the join becomes a real vertex.
+        if (!disabled && pendingSlice && (pendingSlice.t > 1e-4 && pendingSlice.t < 1 - 1e-4)) {
+            // Guard: only slice if we're not effectively at an endpoint.
+            splitWall(pendingSlice.wallId, pendingSlice.t);
         }
 
         setMoving([]);
@@ -255,10 +325,14 @@ export default function WallVerticesManager({ walls }: Props) {
         setHoveredIndex(-1);
         setIsInteracting(false);
         setGuides(null);
+        setPendingSlice(null);
 
         // Remove tiny joined stubs after manipulation completes.
         cleanupShortWalls(200);
-    }, [isMoving, setIsInteracting, movingIndex, points, moving, walls, updateWalls, cleanupShortWalls]);
+
+        // Normalize geometry to resolve overlaps and re-merge collinear segments.
+        normalizeWalls();
+    }, [isMoving, setIsInteracting, moving, walls, updateWalls, cleanupShortWalls, scalePixel, findNearestExternalVertex, pendingSlice, disabled, splitWall, normalizeWalls]);
 
     useMouseMove((e) => {
         const world = clientToWorldPoint({ x: e.clientX, y: e.clientY });
@@ -283,7 +357,32 @@ export default function WallVerticesManager({ walls }: Props) {
     return (
         <>
             <AnimatePresence>
-                {isMoving && guides?.x !== undefined && (
+                {isMoving && pendingSlice && (() => {
+                    const w = walls.find(x => x.id === pendingSlice.wallId);
+                    if (!w) return null;
+                    const p = Vec2.lerp(w.points[0], w.points[1], pendingSlice.t);
+                    const r = scalePixel(6, 3, 200);
+                    return (
+                        <motion.circle
+                            key="pending-slice"
+                            cx={p.x}
+                            cy={p.y}
+                            r={r}
+                            fill="#22c55e"
+                            stroke="#ffffff"
+                            strokeWidth={scalePixel(2)}
+                            initial={{ opacity: 0, scale: 0.7 }}
+                            animate={{ opacity: 0.95, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.7 }}
+                            transition={{ duration: 0.12 }}
+                            style={{ pointerEvents: 'none' }}
+                        />
+                    );
+                })()}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {isMoving && guidelinesEnabled && guides?.x !== undefined && (
                     <motion.line
                         key="guide-x"
                         x1={guides.x}
@@ -299,7 +398,7 @@ export default function WallVerticesManager({ walls }: Props) {
                         transition={{ duration: 0.1 }}
                     />
                 )}
-                {isMoving && guides?.y !== undefined && (
+                {isMoving && guidelinesEnabled && guides?.y !== undefined && (
                     <motion.line
                         key="guide-y"
                         x1={-1000000}
